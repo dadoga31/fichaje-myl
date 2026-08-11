@@ -4,11 +4,16 @@ import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 import { VitePWA } from 'vite-plugin-pwa'
 
-export default defineConfig({
+export default defineConfig(({ mode }) => {
+  // `--mode demo` compila un único HTML autocontenido para poder abrir la
+  // demostración sin servidor: sin service worker y con enrutado por hash.
+  const isSingleFile = mode === 'demo'
+
+  return {
   plugins: [
     react(),
     tailwindcss(),
-    VitePWA({
+    ...(isSingleFile ? [] : [VitePWA({
       registerType: 'prompt',
       includeAssets: ['favicon.svg', 'apple-touch-icon.png'],
       manifest: {
@@ -63,10 +68,31 @@ export default defineConfig({
         ],
       },
       devOptions: { enabled: false },
-    }),
+    })]),
   ],
   resolve: {
-    alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
+    alias: {
+      '@': fileURLToPath(new URL('./src', import.meta.url)),
+      // Sin plugin PWA, el módulo virtual no existe: se sustituye por un stub.
+      ...(isSingleFile
+        ? {
+            'virtual:pwa-register/react': fileURLToPath(
+              new URL('./src/stubs/pwa-register.ts', import.meta.url),
+            ),
+          }
+        : {}),
+    },
   },
+  build: isSingleFile
+    ? {
+        outDir: 'dist-demo',
+        // Todo en un solo bundle: los generadores de PDF/Excel también, para
+        // que no queden ficheros sueltos que el HTML no podría cargar.
+        rollupOptions: { output: { inlineDynamicImports: true } },
+        assetsInlineLimit: Number.MAX_SAFE_INTEGER,
+        cssCodeSplit: false,
+      }
+    : {},
   server: { port: 5173, host: true },
+  }
 })

@@ -26,6 +26,38 @@ import { computeDay, deriveStatus, toISODate } from './time'
 const STORAGE_KEY = 'fichaje-myl:demo:v1'
 const SESSION_KEY = 'fichaje-myl:demo:session'
 
+/**
+ * Acceso tolerante al almacenamiento. En un iframe restringido o con las
+ * cookies de terceros bloqueadas, `localStorage` lanza excepción al tocarlo;
+ * la demo debe seguir funcionando en memoria en vez de caerse.
+ */
+const memoryFallback = new Map<string, string>()
+
+const safeStorage = {
+  get(key: string): string | null {
+    try {
+      return localStorage.getItem(key)
+    } catch {
+      return memoryFallback.get(key) ?? null
+    }
+  },
+  set(key: string, value: string): void {
+    try {
+      localStorage.setItem(key, value)
+    } catch {
+      memoryFallback.set(key, value)
+    }
+  },
+  remove(key: string): void {
+    try {
+      localStorage.removeItem(key)
+    } catch {
+      /* nada que borrar */
+    }
+    memoryFallback.delete(key)
+  },
+}
+
 interface DemoState {
   company: Company
   profiles: Profile[]
@@ -273,7 +305,7 @@ let state: DemoState | null = null
 function load(): DemoState {
   if (state) return state
   try {
-    const raw = localStorage.getItem(STORAGE_KEY)
+    const raw = safeStorage.get(STORAGE_KEY)
     if (raw) {
       state = JSON.parse(raw) as DemoState
       return state
@@ -288,15 +320,12 @@ function load(): DemoState {
 
 function save(): void {
   if (!state) return
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state))
-  } catch {
-    /* Cuota agotada: la demo sigue funcionando solo en memoria. */
-  }
+  safeStorage.set(STORAGE_KEY, JSON.stringify(state))
 }
 
 export function resetDemo(): void {
-  localStorage.removeItem(STORAGE_KEY)
+  safeStorage.remove(STORAGE_KEY)
+  safeStorage.remove(SESSION_KEY)
   state = null
   load()
 }
@@ -316,19 +345,19 @@ export const demoApi = {
   },
 
   getSessionUserId(): string | null {
-    return localStorage.getItem(SESSION_KEY)
+    return safeStorage.get(SESSION_KEY)
   },
 
   signIn(userId: string): Profile {
     const s = load()
     const profile = s.profiles.find((p) => p.id === userId)
     if (!profile) throw new Error('Usuario de demostración no encontrado.')
-    localStorage.setItem(SESSION_KEY, userId)
+    safeStorage.set(SESSION_KEY, userId)
     return profile
   },
 
   signOut(): void {
-    localStorage.removeItem(SESSION_KEY)
+    safeStorage.remove(SESSION_KEY)
   },
 
   getCompany(): Company {

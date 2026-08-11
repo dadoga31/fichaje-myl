@@ -9,7 +9,10 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "typecheck": "tsc -b --noEmit false --emitDeclarationOnly false || tsc -b",
-    "lint": "tsc -b"
+    "lint": "tsc -b",
+    "build:demo": "node scripts/build-demo.mjs",
+    "test:db": "./supabase/test/run-tests.sh",
+    "icons": "node scripts/generate-icons.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.112.3",
