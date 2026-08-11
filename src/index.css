@@ -86,6 +86,40 @@
     background-size: 44px 44px;
   }
 
+  /* --- Botón de mantener pulsado --------------------------------------
+     El destello y el rebote de la marca de visto son la recompensa al
+     completar el gesto: breves, una sola vez, sin rebotes elásticos. */
+  .hold-flash {
+    animation: hold-flash 520ms ease-out forwards;
+  }
+
+  @keyframes hold-flash {
+    0% {
+      opacity: 0.42;
+    }
+    100% {
+      opacity: 0;
+    }
+  }
+
+  /* Latido del botón entero al completar: acuse de recibo físico, sin texto
+     que pueda contradecir el rótulo ya actualizado a la acción siguiente. */
+  .hold-complete {
+    animation: hold-complete 460ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  @keyframes hold-complete {
+    0% {
+      transform: scale(0.985);
+    }
+    35% {
+      transform: scale(1.018);
+    }
+    100% {
+      transform: scale(1);
+    }
+  }
+
   /* Etiqueta micro: la unidad tipográfica que estructura la interfaz */
   .micro-label {
     font-size: 10px;

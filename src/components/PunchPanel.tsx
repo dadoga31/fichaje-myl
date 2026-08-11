@@ -3,6 +3,7 @@ import {
   AlertTriangle,
   CloudOff,
   Coffee,
+  Hand,
   LogIn,
   LogOut,
   MapPin,
@@ -14,6 +15,7 @@ import { ENTRY_LABEL } from '../lib/types'
 import { computeDay, deriveStatus, formatClock, formatDuration, formatTime } from '../lib/time'
 import { useTicker } from '../hooks/useTicker'
 import { Badge, MicroLabel, Notice, Panel, StatusPill, cx } from './ui'
+import { HoldButton } from './HoldButton'
 
 interface PunchPanelProps {
   personName: string
@@ -31,6 +33,14 @@ const PRIMARY_ACTION: Record<WorkStatus, EntryType> = {
   off: 'clock_in',
   working: 'clock_out',
   break: 'break_end',
+}
+
+/** Rótulo de la acción principal en cada estado. */
+const PRIMARY_LABEL: Record<EntryType, string> = {
+  clock_in: 'Fichar entrada',
+  clock_out: 'Fichar salida',
+  break_end: 'Reanudar jornada',
+  break_start: 'Iniciar pausa',
 }
 
 const ACTION_ICON: Record<EntryType, typeof LogIn> = {
@@ -72,15 +82,22 @@ export function PunchPanel({
     return () => window.clearTimeout(id)
   }, [flash])
 
+  // El botón gestiona su propio estado de pulsación; aquí solo se marca que
+  // hay una operación en curso, para desactivar la acción secundaria.
   const handle = useCallback(
-    async (type: EntryType) => {
-      if (pending) return
+    async (type: EntryType): Promise<boolean> => {
+      if (pending) return false
       setPending(type)
       setError(null)
       const message = await onPunch(type)
       setPending(null)
-      if (message) setError(message)
-      else setFlash(`${ENTRY_LABEL[type]} registrada a las ${formatTime(new Date().toISOString())}`)
+
+      if (message) {
+        setError(message)
+        return false
+      }
+      setFlash(`${ENTRY_LABEL[type]} registrada a las ${formatTime(new Date().toISOString())}`)
+      return true
     },
     [onPunch, pending],
   )
@@ -177,19 +194,12 @@ export function PunchPanel({
         </div>
       </div>
 
-      {/* --- Avisos ------------------------------------------------------ */}
-      {(error || flash || !online || queued.length > 0) && (
+      {/* --- Condiciones previas al fichaje -------------------------------
+          Aquí SOLO lo que conviene saber ANTES de pulsar. El resultado va
+          debajo de los botones: si apareciera aquí, empujaría el botón hacia
+          abajo justo al completar la pulsación, moviéndolo bajo el dedo. */}
+      {(!online || queued.length > 0) && (
         <div className="flex flex-col gap-2 border-b border-slate-200 px-4 py-3 sm:px-5">
-          {error && (
-            <Notice tone="error" icon={<AlertTriangle size={15} />}>
-              {error}
-            </Notice>
-          )}
-          {flash && !error && (
-            <Notice tone="ok" icon={<ShieldCheck size={15} />}>
-              {flash}
-            </Notice>
-          )}
           {!online && (
             <Notice tone="warn" icon={<CloudOff size={15} />}>
               Sin conexión. Puede fichar igualmente: se guarda con la hora real en este
@@ -210,59 +220,68 @@ export function PunchPanel({
       {/* --- Acciones ---------------------------------------------------- */}
       <div className="px-4 py-4 sm:px-5 sm:py-5">
         <div className={cx('grid gap-2.5', secondary ? 'sm:grid-cols-[2fr_1fr]' : '')}>
-          <button
-            type="button"
-            onClick={() => void handle(primary)}
+          <HoldButton
+            onHoldComplete={() => handle(primary)}
             disabled={pending !== null}
+            tone="dark"
+            label={PRIMARY_LABEL[primary]}
+            icon={<PrimaryIcon size={20} strokeWidth={2.2} />}
             className={cx(
-              'group relative flex h-16 items-center justify-center gap-3 rounded-[6px] px-6',
-              'text-base font-semibold text-white transition-all duration-150',
-              'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600',
-              'disabled:cursor-not-allowed disabled:opacity-60',
+              'h-16 px-6 text-base',
               primary === 'clock_out'
-                ? 'bg-slate-900 hover:bg-slate-800 active:bg-black'
-                : 'bg-brand-800 hover:bg-brand-700 active:bg-brand-900',
-              'shadow-[0_1px_0_0_rgba(15,23,42,0.12)] active:translate-y-px',
+                ? 'bg-slate-900 hover:bg-slate-800'
+                : 'bg-brand-800 hover:bg-brand-700',
+              'shadow-[0_1px_0_0_rgba(15,23,42,0.12)]',
             )}
           >
-            {pending === primary ? (
-              <span className="h-5 w-5 animate-spin rounded-full border-2 border-white/40 border-t-white" />
-            ) : (
-              <PrimaryIcon size={20} strokeWidth={2.2} />
-            )}
-            <span>
-              {primary === 'clock_in' && 'Fichar entrada'}
-              {primary === 'clock_out' && 'Fichar salida'}
-              {primary === 'break_end' && 'Reanudar jornada'}
-            </span>
-          </button>
+            {PRIMARY_LABEL[primary]}
+          </HoldButton>
 
           {secondary && (
-            <button
-              type="button"
-              onClick={() => void handle(secondary)}
+            <HoldButton
+              onHoldComplete={() => handle(secondary)}
               disabled={pending !== null}
+              tone="light"
+              label={secondary === 'break_start' ? 'Iniciar pausa' : 'Fichar salida'}
+              icon={
+                secondary === 'break_start' ? (
+                  <Coffee size={18} strokeWidth={2.2} />
+                ) : (
+                  <LogOut size={18} strokeWidth={2.2} />
+                )
+              }
               className={cx(
-                'flex h-16 items-center justify-center gap-2.5 rounded-[6px] border px-5',
-                'text-sm font-semibold transition-colors duration-150',
-                'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600',
-                'disabled:cursor-not-allowed disabled:opacity-60',
+                'h-16 border px-5 text-sm',
                 secondary === 'break_start'
-                  ? 'border-orange-300 bg-orange-50 text-orange-800 hover:bg-orange-100 active:bg-orange-200'
-                  : 'border-slate-300 bg-white text-slate-800 hover:bg-slate-50 active:bg-slate-100',
+                  ? 'border-orange-300 bg-orange-50 text-orange-800 hover:bg-orange-100'
+                  : 'border-slate-300 bg-white text-slate-800 hover:bg-slate-50',
               )}
             >
-              {pending === secondary ? (
-                <span className="h-4 w-4 animate-spin rounded-full border-2 border-current/30 border-t-current" />
-              ) : secondary === 'break_start' ? (
-                <Coffee size={18} strokeWidth={2.2} />
-              ) : (
-                <LogOut size={18} strokeWidth={2.2} />
-              )}
               {secondary === 'break_start' ? 'Pausa' : 'Salida'}
-            </button>
+            </HoldButton>
           )}
         </div>
+
+        {/* Resultado de la última acción, debajo de los botones. */}
+        {(error || flash) && (
+          <div className="mt-3">
+            {error ? (
+              <Notice tone="error" icon={<AlertTriangle size={15} />}>
+                {error}
+              </Notice>
+            ) : (
+              <Notice tone="ok" icon={<ShieldCheck size={15} />}>
+                {flash}
+              </Notice>
+            )}
+          </div>
+        )}
+
+        <p className="mt-3 flex items-start gap-1.5 text-[11px] leading-relaxed text-slate-500">
+          <Hand size={12} className="mt-0.5 shrink-0" />
+          Mantenga pulsado el botón hasta que se complete la barra. Un fichaje
+          registrado no se puede deshacer, solo rectificar.
+        </p>
 
         {geoEnabled && (
           <p className="mt-3 flex items-center gap-1.5 text-[11px] text-slate-500">
