@@ -44,11 +44,20 @@ export function Layout({ children }: { children: ReactNode }) {
   const items = NAV.filter((item) => item.roles.includes(role))
   // En móvil la barra inferior solo admite 5 destinos legibles.
   const mobileItems = items.slice(0, 5)
+  const isPunchScreen = location.pathname === '/'
 
   return (
-    <div className="min-h-dvh bg-canvas">
+    <div
+      className={cx(
+        'flex flex-col bg-canvas',
+        // La pantalla de fichaje necesita un alto DEFINIDO para que su panel
+        // pueda repartirse el espacio sin desbordar; el resto de secciones
+        // son documentos que crecen y se recorren con normalidad.
+        isPunchScreen ? 'h-dvh overflow-hidden' : 'min-h-dvh',
+      )}
+    >
       {/* --- Barra superior ---------------------------------------------- */}
-      <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur-sm">
+      <header className="sticky top-0 z-30 shrink-0 border-b border-slate-200 bg-white/95 backdrop-blur-sm">
         <div className="mx-auto flex h-14 max-w-7xl items-center gap-4 px-4 sm:px-6">
           <div className="flex items-center gap-2.5">
             <span className="flex h-7 w-7 items-center justify-center rounded-[4px] bg-brand-800 text-white">
@@ -109,10 +118,18 @@ export function Layout({ children }: { children: ReactNode }) {
 
       <UpdatePrompt />
 
-      {/* --- Contenido ---------------------------------------------------- */}
+      {/* --- Contenido ----------------------------------------------------
+          La pantalla de fichaje ocupa exactamente el alto disponible y no
+          scrollea; el resto de secciones son documentos que sí se recorren.
+          Se descuenta la barra superior (3.5rem) y, en móvil, la inferior. */}
       <main
         key={location.pathname}
-        className="mx-auto max-w-7xl px-4 pb-24 pt-5 sm:px-6 sm:pt-6 lg:pb-10"
+        className={cx(
+          'mx-auto w-full max-w-7xl px-4 sm:px-6',
+          isPunchScreen
+            ? 'min-h-0 flex-1 py-3 pb-[4.25rem] lg:py-4 lg:pb-4'
+            : 'pt-5 pb-24 sm:pt-6 lg:pb-10',
+        )}
       >
         {children}
       </main>

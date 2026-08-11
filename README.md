@@ -84,9 +84,11 @@ Se ejecutan contra cualquier PostgreSQL local, sin necesidad de Supabase:
 ## Funcionalidad
 
 **Persona trabajadora**
-Reloj en tiempo real con contador de jornada, botón único de acción según el
-estado (entrar / pausar / reanudar / salir), historial en calendario con el
-detalle de cada día y sus rectificaciones, y solicitud de correcciones.
+La pantalla de fichaje ocupa una sola pantalla y no se desplaza: contador de
+jornada en vivo, reloj, y un botón de acción según el estado que exige
+mantener la pulsación. Todo lo demás —historial en calendario con el detalle
+de cada día y sus rectificaciones, y solicitud de correcciones— vive en sus
+propias secciones.
 
 **Administración**
 Panel en vivo del estado de la plantilla, bandeja de aprobaciones con la regla

@@ -1,5 +1,10 @@
 @import 'tailwindcss';
 
+/* Variante por ALTURA de ventana. La pantalla de fichaje no scrollea, así que
+   en pantallas bajas (un iPhone SE, o cualquier móvil con el teclado abierto)
+   los espacios y el cuerpo del contador tienen que ceder. */
+@custom-variant tall (@media (min-height: 700px));
+
 /* =====================================================================
    SISTEMA DE DISEÑO — "Minimal Stark" con acento morado corporativo
    Densidad alta, bordes finos, sin esquinas infladas. El morado se
@@ -117,6 +122,44 @@
     }
     100% {
       transform: scale(1);
+    }
+  }
+
+  /* Fichaje recién registrado: entra con un anillo morado que se disuelve.
+     Es la confirmación, y además señala dónde ha quedado anotado. */
+  .chip-nuevo {
+    animation: chip-nuevo 2s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  @keyframes chip-nuevo {
+    0% {
+      transform: scale(0.9);
+      box-shadow: 0 0 0 0 var(--color-brand-500);
+    }
+    12% {
+      transform: scale(1.04);
+    }
+    30% {
+      transform: scale(1);
+    }
+    100% {
+      box-shadow: 0 0 0 6px rgba(168, 85, 247, 0);
+    }
+  }
+
+  /* Aviso de error sobre los botones: entra sin desplazar el diseño. */
+  .punch-toast {
+    animation: punch-toast 220ms ease-out;
+  }
+
+  @keyframes punch-toast {
+    from {
+      opacity: 0;
+      transform: translateY(4px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
     }
   }
 
