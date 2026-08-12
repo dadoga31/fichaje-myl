@@ -70,6 +70,37 @@ Se ejecutan contra cualquier PostgreSQL local, sin necesidad de Supabase:
 
 ---
 
+## Ramas
+
+| Rama | Para qué |
+|---|---|
+| `main` | Lo publicado. Solo recibe cambios ya probados, por fusión desde `dev`. |
+| `dev` | Rama de trabajo. Aquí se integra y se prueba todo antes de publicar. |
+
+Trabajo del día a día:
+
+```bash
+git checkout dev
+# … cambios …
+npm run build            # typecheck + build deben pasar
+./supabase/test/run-tests.sh   # si se ha tocado SQL
+git commit -am "…" && git push
+```
+
+Publicar en `main` cuando `dev` esté verde:
+
+```bash
+git checkout main
+git merge --no-ff dev    # --no-ff deja constancia de qué se publicó y cuándo
+git push
+git checkout dev         # volver a la rama de trabajo
+```
+
+Para cambios grandes, ramifique desde `dev` (`git checkout -b feature/x dev`) y
+fusione de vuelta a `dev`, no a `main`.
+
+---
+
 ## Roles
 
 | Rol | Qué puede hacer |
