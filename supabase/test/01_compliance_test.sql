@@ -125,13 +125,29 @@ select pg_temp.assert_fails(
   'No se puede fichar salida sin jornada abierta');
 
 -- Presencia de 3h50 (de -4h a -10min) menos 30 min de pausa = 3h20 efectivas.
+--
+-- Se SUMA el rango completo en vez de exigir que todo caiga en un mismo día:
+-- si la batería se ejecuta de madrugada, la jornada cruza la medianoche y sus
+-- horas se reparten —correctamente— entre dos fechas naturales. Comprobar una
+-- sola fila hacía fallar la prueba entre las 00:00 y las 04:00, y lo que se
+-- quiere verificar aquí es el cómputo, no en qué día se imputa.
 select pg_temp.assert(
-  abs(worked_seconds - (3 * 3600 + 20 * 60)) < 120 and abs(break_seconds - 1800) < 120,
+  abs(sum(worked_seconds) - (3 * 3600 + 20 * 60)) < 120
+    and abs(sum(break_seconds) - 1800) < 120,
   'El cómputo de jornada descuenta la pausa correctamente ('
-    || round(worked_seconds / 3600.0, 2) || ' h trabajadas, '
-    || round(break_seconds / 60.0) || ' min de pausa)')
+    || round(sum(worked_seconds) / 3600.0, 2) || ' h trabajadas, '
+    || round(sum(break_seconds) / 60.0) || ' min de pausa)')
 from public.daily_summary(
-  '11111111-1111-1111-1111-111111111111'::uuid, current_date - 1, current_date)
+  '11111111-1111-1111-1111-111111111111'::uuid, current_date - 1, current_date + 1);
+
+-- Y se fija el reparto por días, que es comportamiento real y no accidente:
+-- un turno de noche deja horas en las dos fechas que toca.
+select pg_temp.assert(
+  count(*) between 1 and 2,
+  'La jornada se imputa a su día natural ('
+    || count(*) || ' fecha(s) con trabajo efectivo)')
+from public.daily_summary(
+  '11111111-1111-1111-1111-111111111111'::uuid, current_date - 1, current_date + 1)
 where worked_seconds > 0;
 commit;
 

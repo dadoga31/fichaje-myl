@@ -83,7 +83,7 @@ Se ejecutan contra cualquier PostgreSQL local, sin necesidad de Supabase:
 ./supabase/test/run-tests.sh
 ```
 
-39 aserciones que intentan romper activamente cada garantía legal.
+40 aserciones que intentan romper activamente cada garantía legal.
 
 ---
 

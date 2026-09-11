@@ -177,7 +177,7 @@ adelanto (reloj del móvil) y 24 horas de retraso (sincronización diferida).
 ## 9. Verificación
 
 Las garantías anteriores no se afirman: se prueban. La batería
-`supabase/test/01_compliance_test.sql` contiene 39 aserciones que intentan
+`supabase/test/01_compliance_test.sql` contiene 40 aserciones que intentan
 **activamente** romper cada garantía y fallan ruidosamente si lo consiguen.
 
 ```bash
