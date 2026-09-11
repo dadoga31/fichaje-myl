@@ -187,9 +187,9 @@ export function HoldButton({
       onContextMenu={(e) => e.preventDefault()}
       className={cx(
         'group relative isolate flex items-center justify-center gap-3 overflow-hidden',
-        'rounded-[6px] font-semibold select-none',
-        'transition-[transform,background-color] duration-150',
-        'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-600',
+        'font-bold tracking-tight select-none',
+        'transition-[transform,box-shadow] duration-200 ease-[var(--ease-out-soft)]',
+        'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600',
         // La atenuación de "desactivado" solo cuando lo está de verdad: mientras
         // se registra el fichaje el botón debe seguir vivo, no volverse gris.
         disabled && 'cursor-not-allowed opacity-60',
@@ -210,7 +210,7 @@ export function HoldButton({
         aria-hidden="true"
         className={cx(
           'absolute inset-y-0 left-0 -z-10',
-          tone === 'dark' ? 'bg-white/22' : 'bg-current/12',
+          tone === 'dark' ? 'bg-white/25' : 'bg-violet-400/18',
         )}
         style={{ width: `${pct}%` }}
       />
@@ -221,7 +221,7 @@ export function HoldButton({
           aria-hidden="true"
           className={cx(
             'absolute inset-y-0 -z-10 w-px',
-            tone === 'dark' ? 'bg-white/70' : 'bg-current/40',
+            tone === 'dark' ? 'bg-white/80' : 'bg-violet-500/50',
           )}
           style={{ left: `${pct}%` }}
         />
@@ -232,7 +232,7 @@ export function HoldButton({
         aria-hidden="true"
         className={cx(
           'absolute inset-x-0 bottom-0 h-[3px] origin-left',
-          tone === 'dark' ? 'bg-white' : 'bg-current',
+          tone === 'dark' ? 'bg-white' : 'bg-violet-500',
           phase === 'done' && 'opacity-0 transition-opacity duration-500',
         )}
         style={{ transform: `scaleX(${progress})` }}
@@ -244,7 +244,7 @@ export function HoldButton({
           aria-hidden="true"
           className={cx(
             'hold-flash absolute inset-0 -z-10',
-            tone === 'dark' ? 'bg-white' : 'bg-current',
+            tone === 'dark' ? 'bg-white' : 'bg-violet-400',
           )}
         />
       )}

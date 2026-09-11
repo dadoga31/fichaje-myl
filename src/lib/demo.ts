@@ -251,24 +251,53 @@ function buildSeed(): DemoState {
     })
   }
 
-  // --- Jornada de hoy en curso para parte de la plantilla -----------------
+  // --- Jornada de hoy, ya en curso ---------------------------------------
+  // La demostración se enseña a una hora cualquiera, así que las jornadas se
+  // siembran RELATIVAS al momento de abrirla: quien entra ve un anillo a
+  // media carga y un día con recorrido, no un contador a cero.
   const now = new Date()
-  if (now.getDay() !== 0 && now.getDay() !== 6 && now.getHours() >= 9) {
-    const startToday = at(now, 8, 45)
-    if (startToday < now) {
-      push('demo-user-carmen', 'clock_in', startToday)
-      const cBreak = at(now, 11, 15)
-      if (cBreak < now) push('demo-user-carmen', 'break_start', cBreak)
+  const minutosDesdeMedianoche = now.getHours() * 60 + now.getMinutes()
 
-      push('demo-user-javier', 'clock_in', at(now, 8, 30))
-      const jl = at(now, 12, 0)
-      if (jl < now) {
-        push('demo-user-javier', 'break_start', jl)
-        const jb = at(now, 12, 20)
-        if (jb < now) push('demo-user-javier', 'break_end', jb)
-      }
-    }
+  /**
+   * Siembra una jornada de hoy ACOTADA al día natural.
+   *
+   * Sin el tope, abrir la demostración de madrugada colocaría la entrada en
+   * la víspera y la pantalla aparecería a cero, que es justo lo contrario de
+   * lo que debe enseñar.
+   */
+  const sembrarJornada = (
+    userId: string,
+    plan: { entrada: number; pausa?: number; reanuda?: number; salida?: number },
+  ) => {
+    // Margen de 10 min para que la entrada nunca caiga en el minuto cero.
+    const tope = Math.max(0, minutosDesdeMedianoche - 10)
+    if (tope < 20) return // de madrugada cerrada no hay jornada que enseñar
+
+    const escala = Math.min(1, tope / plan.entrada)
+    const hace = (minutos: number) =>
+      new Date(now.getTime() - Math.round(minutos * escala) * 60_000)
+
+    push(userId, 'clock_in', hace(plan.entrada))
+    if (plan.pausa !== undefined) push(userId, 'break_start', hace(plan.pausa))
+    if (plan.reanuda !== undefined) push(userId, 'break_end', hace(plan.reanuda))
+    if (plan.salida !== undefined) push(userId, 'clock_out', hace(plan.salida))
   }
+
+  // Ana: jornada avanzada con su pausa ya terminada.
+  sembrarJornada('demo-user-ana', { entrada: 280, pausa: 150, reanuda: 115 })
+
+  // Carmen: ahora mismo en pausa.
+  sembrarJornada('demo-user-carmen', { entrada: 215, pausa: 18 })
+
+  // Javier (jornada de 30 h): media jornada, ya cerrada.
+  sembrarJornada('demo-user-javier', { entrada: 330, pausa: 200, reanuda: 180, salida: 45 })
+
+  // Luis (administración): jornada en curso, para que su propia pantalla de
+  // fichaje también tenga algo que enseñar.
+  sembrarJornada('demo-user-luis', { entrada: 250, pausa: 120, reanuda: 85 })
+
+  // Marta se queda fuera de jornada: el panel de plantilla necesita mostrar
+  // los tres estados a la vez.
 
   // --- Solicitud pendiente de resolver, para la bandeja de RRHH ----------
   const yesterday = new Date(today)
@@ -318,9 +347,36 @@ function load(): DemoState {
   return state
 }
 
+/** Oyentes de cambios, para que la demo también se refresque sola. */
+const demoListeners = new Set<() => void>()
+
 function save(): void {
   if (!state) return
   safeStorage.set(STORAGE_KEY, JSON.stringify(state))
+  for (const listener of demoListeners) listener()
+}
+
+/**
+ * Suscripción a cambios en modo demostración. Solo alcanza a las pestañas
+ * de ESTE navegador (evento `storage` entre pestañas), porque la demo no
+ * tiene servidor: los datos viven en el propio dispositivo. Para que una
+ * jornada aparezca en el móvil de otra persona hace falta el backend real.
+ */
+export function subscribeDemo(onChange: () => void): () => void {
+  demoListeners.add(onChange)
+
+  const onStorage = (event: StorageEvent) => {
+    if (event.key === STORAGE_KEY) {
+      state = null // otra pestaña escribió: releer desde el almacenamiento
+      onChange()
+    }
+  }
+  window.addEventListener('storage', onStorage)
+
+  return () => {
+    demoListeners.delete(onChange)
+    window.removeEventListener('storage', onStorage)
+  }
 }
 
 export function resetDemo(): void {

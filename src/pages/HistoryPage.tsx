@@ -215,11 +215,11 @@ export function HistoryPage() {
                         // calendario es ancho y las celdas cuadradas lo estiran
                         // hasta ocupar toda la pantalla.
                         'relative flex h-14 flex-col items-center justify-center gap-0.5 rounded-[4px] border text-xs transition-colors sm:h-16',
-                        'focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-brand-600',
+                        'focus-visible:outline-2 focus-visible:outline-offset-1 focus-visible:outline-violet-600',
                         isSelected
-                          ? 'border-brand-600 bg-brand-100 text-brand-900'
+                          ? 'border-violet-600 bg-violet-100 text-violet-900'
                           : summary
-                            ? 'border-slate-200 bg-white hover:border-brand-300 hover:bg-brand-50'
+                            ? 'border-slate-200 bg-white hover:border-violet-300 hover:bg-violet-50'
                             : cx(
                                 'border-transparent',
                                 weekend ? 'bg-slate-50' : 'bg-white',
@@ -230,7 +230,7 @@ export function HistoryPage() {
                       <span
                         className={cx(
                           'text-[13px] leading-none font-medium',
-                          isToday && !isSelected && 'text-brand-800',
+                          isToday && !isSelected && 'text-violet-800',
                         )}
                       >
                         {cell.dayNumber}
@@ -253,7 +253,7 @@ export function HistoryPage() {
                         />
                       )}
                       {isToday && (
-                        <span className="absolute inset-x-2 bottom-1 h-px bg-brand-700" />
+                        <span className="absolute inset-x-2 bottom-1 h-px bg-violet-700" />
                       )}
                     </button>
                   )

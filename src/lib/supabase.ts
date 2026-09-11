@@ -3,17 +3,25 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 const url = import.meta.env.VITE_SUPABASE_URL
 const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY
 
-/**
- * Sin credenciales configuradas la aplicación arranca en MODO DEMO, con un
- * backend en memoria que reproduce las mismas reglas del servidor. Sirve para
- * evaluar la interfaz sin infraestructura; no es apto para uso real, porque la
- * inalterabilidad solo es exigible del lado del servidor.
- */
-export const isDemoMode = !url || !anonKey
+/** Hay backend real configurado. */
+export const isConfigured = Boolean(url && anonKey)
 
-export const supabase: SupabaseClient | null = isDemoMode
-  ? null
-  : createClient(url as string, anonKey as string, {
+/**
+ * El modo demostración es EXPLÍCITO: exige VITE_DEMO=true.
+ *
+ * Antes bastaba con que faltasen las credenciales para caer en la demo. En un
+ * despliegue real eso es peligroso: una variable de entorno mal escrita en
+ * Vercel dejaría la app funcionando con datos ficticios, la gente ficharía
+ * contra el navegador y no quedaría registro legal de nada. Ahora una
+ * configuración incompleta se ve en pantalla y bloquea el acceso.
+ */
+export const isDemoMode = !isConfigured && import.meta.env.VITE_DEMO === 'true'
+
+/** Ni backend ni demo: hay que configurar algo antes de poder usarla. */
+export const isMisconfigured = !isConfigured && !isDemoMode
+
+export const supabase: SupabaseClient | null = isConfigured
+  ? createClient(url as string, anonKey as string, {
       auth: {
         persistSession: true,
         autoRefreshToken: true,
@@ -22,7 +30,13 @@ export const supabase: SupabaseClient | null = isDemoMode
       global: {
         headers: { 'x-app': 'fichaje-myl' },
       },
+      realtime: {
+        // Suficiente para el fichaje de una plantilla; evita saturar el
+        // canal si alguien deja el panel abierto todo el día.
+        params: { eventsPerSecond: 5 },
+      },
     })
+  : null
 
 export function requireSupabase(): SupabaseClient {
   if (!supabase) {

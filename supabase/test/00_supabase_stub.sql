@@ -4,9 +4,13 @@
 
 create schema if not exists auth;
 
+-- Espejo de las columnas de auth.users que usa la aplicación. En Supabase
+-- real esta tabla ya existe con muchas más columnas.
 create table if not exists auth.users (
-  id    uuid primary key default gen_random_uuid(),
-  email text
+  id                  uuid primary key default gen_random_uuid(),
+  email               text,
+  raw_user_meta_data  jsonb default '{}'::jsonb,
+  created_at          timestamptz default now()
 );
 
 -- auth.uid() lee el "usuario actual" de una variable de sesión, igual que

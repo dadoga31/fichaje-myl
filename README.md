@@ -33,30 +33,47 @@ Detalle completo en [`docs/CUMPLIMIENTO.md`](docs/CUMPLIMIENTO.md).
 
 ```bash
 npm install
-npm run dev          # http://localhost:5173
+cp .env.example .env.local     # y rellene URL y anon key
+npm run dev                    # http://localhost:5173
 ```
 
-Sin credenciales de Supabase la aplicación arranca en **modo demo**, con una
-plantilla ficticia y dos meses de historial en el navegador. Sirve para
-evaluar la interfaz completa sin desplegar nada.
+**Sin credenciales la aplicación no arranca**: muestra una pantalla de
+configuración y bloquea el acceso. Es deliberado — un registro de jornada que
+vive en el `localStorage` de cada móvil no prueba nada ante una Inspección, así
+que es preferible que nadie entre a que la plantilla fiche contra el navegador.
 
-### Con Supabase
+Para ver la interfaz con datos de ejemplo, sin base de datos y sin valor legal:
 
 ```bash
-cp .env.example .env.local     # y rellene URL y anon key
+npm run dev:demo
 ```
 
-Aplique las migraciones en orden desde el editor SQL de Supabase o con la CLI:
+### Despliegue en producción
+
+Guía completa en **[`docs/DESPLIEGUE.md`](docs/DESPLIEGUE.md)**: crear el
+proyecto de Supabase, aplicar las migraciones, dar de alta la empresa y a las
+personas reales, y conectar Vercel.
+
+### Migraciones
+
+Se aplican en orden desde el editor SQL de Supabase:
 
 ```
-supabase/migrations/0001_schema.sql        Tablas y tipos
-supabase/migrations/0002_immutability.sql  Inalterabilidad, sellado, auditoría
-supabase/migrations/0003_rls.sql           Row Level Security
-supabase/migrations/0004_operations.sql    RPC transaccionales y vistas
+supabase/migrations/0001_schema.sql            Tablas y tipos
+supabase/migrations/0002_immutability.sql      Inalterabilidad, sellado, auditoría
+supabase/migrations/0003_rls.sql               Row Level Security
+supabase/migrations/0004_operations.sql        RPC transaccionales y vistas
+supabase/migrations/0005_realtime_y_altas.sql  Tiempo real y alta de personas
 ```
 
-Después, cree una empresa en `companies` y un perfil en `profiles` por cada
-usuario de `auth.users` (el `id` del perfil es el del usuario de Supabase Auth).
+Las personas se dan de alta desde un CSV; el perfil se crea solo:
+
+```bash
+export SUPABASE_URL=https://xxxxx.supabase.co
+export SUPABASE_SERVICE_KEY=eyJ...                   # clave service_role
+node scripts/alta-personas.mjs plantilla.csv --dry-run
+node scripts/alta-personas.mjs plantilla.csv
+```
 
 ### Pruebas de cumplimiento
 
@@ -66,7 +83,7 @@ Se ejecutan contra cualquier PostgreSQL local, sin necesidad de Supabase:
 ./supabase/test/run-tests.sh
 ```
 
-35 aserciones que intentan romper activamente cada garantía legal.
+40 aserciones que intentan romper activamente cada garantía legal.
 
 ---
 
@@ -157,6 +174,19 @@ no arrastra medio megabyte de dependencias que casi nadie usa desde el móvil.
 
 ---
 
+## Sincronización en tiempo real
+
+Cada fichaje llega empujado por el servidor a través de Supabase Realtime: lo
+que una persona ficha aparece en el panel de quien supervisa en el mismo
+instante, sin recargar. La difusión respeta la RLS de cada suscriptor —la
+persona trabajadora solo recibe sus propios fichajes; administración, los de su
+empresa—, así que sincronizar no abre ningún agujero de privacidad.
+
+Si el WebSocket se cae (un móvil que se duerme, una red inestable), un sondeo
+de 60 segundos recupera el estado sin que nadie tenga que recargar.
+
+---
+
 ## Sin conexión
 
 La PWA cachea la aplicación y permite fichar sin cobertura. El fichaje se
@@ -167,13 +197,33 @@ documentada.
 
 ---
 
-## Diseño
+## Diseño — sistema «Aurora»
 
-Estética *Minimal Stark*: bordes finos, radios contenidos, alta densidad
-informativa y tipografía tabular en toda cifra que deba compararse. El morado
-corporativo (`#6B21A8`) se reserva para la acción y el estado; el color de
-estado —verde en jornada, naranja en pausa, gris fuera de jornada— nunca es la
-única señal, siempre va acompañado de texto.
+Cristal esmerilado blanco flotando sobre luz morada. Dos ideas lo sostienen:
+
+**La luz responde al estado.** El fondo de la aplicación cambia de tono con la
+jornada —verde en jornada, ámbar en pausa, morado en reposo—, de modo que la
+pantalla dice en qué situación estás antes de leer una sola palabra. El color
+nunca va solo: siempre lo acompañan texto e icono.
+
+**El anillo es reloj y progreso a la vez.** Sustituye a la barra plana porque
+es la forma que ya significa «tiempo», y su trazo se colorea con el mismo
+código que la luz del fondo.
+
+| Elemento | Decisión |
+|---|---|
+| Tinta | `#1B0A33`, negro violáceo — nunca gris lavado |
+| Neutros | Toda la escala gris está teñida hacia el violeta: un gris puro delataría que el color se heredó en vez de elegirse |
+| Radios | 28 px en superficies héroe · 16 px en tarjetas · 10 px en controles. Que no sea todo igual es lo que evita el aspecto de plantilla |
+| Sombras | Moradas y difusas, jamás grises |
+| Tipografía | Bricolage Grotesque (display y reloj) + Plus Jakarta Sans (interfaz), autoalojadas para que la PWA se vea igual sin conexión |
+
+El reloj gira cada cifra por separado y solo la que cambia. Su animación nunca
+baja de opacidad 0.35: partiendo de invisible, el dígito de los segundos pasaba
+media vida en blanco y parecía un fallo de renderizado.
+
+Con `prefers-reduced-motion` la interfaz se queda quieta pero completa: la
+aurora se congela en una posición, no desaparece.
 
 Los iconos de la PWA se generan con `node scripts/generate-icons.mjs`, que
 rasteriza el logotipo y codifica los PNG sin librerías gráficas.

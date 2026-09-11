@@ -20,8 +20,8 @@ export function UpdatePrompt() {
 
   return (
     <div className="mx-auto w-full max-w-7xl shrink-0 px-4 pt-3 sm:px-6">
-      <div className="flex items-center justify-between gap-3 rounded-[4px] border border-brand-200 bg-brand-50 py-1.5 pr-1.5 pl-3">
-        <p className="flex items-center gap-2 text-[12px] text-brand-900">
+      <div className="flex items-center justify-between gap-3 rounded-[4px] border border-violet-200 bg-violet-50 py-1.5 pr-1.5 pl-3">
+        <p className="flex items-center gap-2 text-[12px] text-violet-900">
           <RefreshCw size={13} className="shrink-0" />
           Hay una versión nueva disponible.
         </p>

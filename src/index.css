@@ -1,50 +1,115 @@
 @import 'tailwindcss';
 
-/* Variante por ALTURA de ventana. La pantalla de fichaje no scrollea, así que
-   en pantallas bajas (un iPhone SE, o cualquier móvil con el teclado abierto)
-   los espacios y el cuerpo del contador tienen que ceder. */
+/* Tipografías autoalojadas: la PWA debe verse igual sin conexión, así que no
+   se enlaza ninguna CDN de fuentes. */
+@import '@fontsource-variable/plus-jakarta-sans';
+@import '@fontsource-variable/bricolage-grotesque';
+
+/* Variante por ALTURA de ventana: la pantalla de fichaje no scrollea, así que
+   en pantallas bajas los espacios y el reloj tienen que ceder. */
 @custom-variant tall (@media (min-height: 700px));
 
 /* =====================================================================
-   SISTEMA DE DISEÑO — "Minimal Stark" con acento morado corporativo
-   Densidad alta, bordes finos, sin esquinas infladas. El morado se
-   reserva para acción y estado; nunca decora.
+   SISTEMA DE DISEÑO — "Aurora"
+   Cristal esmerilado blanco flotando sobre luz morada. El color no decora:
+   la luz de fondo CAMBIA con el estado de la jornada, de modo que la
+   pantalla entera dice si estás dentro, en pausa o fuera antes de leer nada.
    ===================================================================== */
 @theme {
-  /* Superficies */
-  --color-canvas: #f8fafc;
-  --color-surface: #ffffff;
-  --color-sunken: #f1f5f9;
+  /* --- Tinta. Negro violáceo, nunca gris lavado --------------------- */
+  --color-ink: #1b0a33;
+  --color-ink-soft: #6b5b85;
+  --color-ink-faint: #a99cbd;
 
-  /* Morado corporativo */
-  --color-brand-50: #faf5ff;
-  --color-brand-100: #f3e8ff;
-  --color-brand-200: #e9d5ff;
-  --color-brand-300: #d8b4fe;
-  --color-brand-400: #c084fc;
-  --color-brand-500: #a855f7;
-  --color-brand-600: #9333ea;
-  --color-brand-700: #7e22ce;
-  --color-brand-800: #6b21a8;
-  --color-brand-900: #581c87;
+  /* --- Lienzo y cristal --------------------------------------------- */
+  --color-canvas: #faf8ff;
+  --color-glass: rgb(255 255 255 / 0.72);
+  --color-glass-strong: rgb(255 255 255 / 0.88);
+  --color-hairline: rgb(27 10 51 / 0.08);
 
-  /* Estados de jornada */
-  --color-working: #059669;
-  --color-working-soft: #ecfdf5;
-  --color-break: #ea580c;
-  --color-break-soft: #fff7ed;
-  --color-off: #64748b;
-  --color-off-soft: #f1f5f9;
+  /* --- Morado corporativo ------------------------------------------- */
+  --color-violet-50: #f6f2ff;
+  --color-violet-100: #ede4ff;
+  --color-violet-200: #ddccff;
+  --color-violet-300: #c4a6fc;
+  --color-violet-400: #a855f7;
+  --color-violet-500: #8b3ff0;
+  --color-violet-600: #7c3aed;
+  --color-violet-700: #6520d9;
+  --color-violet-800: #4c1d95;
+  --color-violet-900: #2e1065;
 
-  /* Tipografía: una sans densa para UI, tabular para cifras */
-  --font-sans:
-    'Inter var', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-  --font-mono: 'SF Mono', 'JetBrains Mono', 'Menlo', ui-monospace, monospace;
+  /* --- Estados de jornada, con la misma saturación entre sí ---------- */
+  --color-live: #0d9f6e;
+  --color-live-soft: #d9f7ec;
+  --color-rest: #e07a1b;
+  --color-rest-soft: #fdefdc;
+  --color-idle: #8b7fa3;
+  --color-idle-soft: #f0ecf7;
 
-  /* Radios contenidos: 2-6px, nunca "pill" salvo en indicadores */
-  --radius-xs: 2px;
-  --radius-sm: 4px;
-  --radius-md: 6px;
+  /* --- Neutros heredados, RE-TEÑIDOS hacia el violeta ------------------
+     Las pantallas que todavía usan la escala `slate` adoptan la paleta nueva
+     sin tocar doscientas llamadas: el gris deja de ser gris y pasa a tener el
+     mismo sesgo que el resto del sistema. Un gris puro delataría que el color
+     se heredó en vez de elegirse. */
+  --color-slate-50: #f8f6fd;
+  --color-slate-100: #f2eefb;
+  --color-slate-200: #e6e0f3;
+  --color-slate-300: #cfc6e2;
+  --color-slate-400: #a99cbd;
+  --color-slate-500: #8b7fa3;
+  --color-slate-600: #6b5b85;
+  --color-slate-700: #4f4266;
+  --color-slate-800: #33264a;
+  --color-slate-900: #1b0a33;
+
+  /* Verdes y naranjas alineados con los estados de jornada. */
+  --color-emerald-50: #e4faf1;
+  --color-emerald-100: #c6f3e2;
+  --color-emerald-200: #a7ecd0;
+  --color-emerald-500: #0d9f6e;
+  --color-emerald-600: #0d9f6e;
+  --color-emerald-700: #07694a;
+  --color-emerald-800: #06563d;
+  --color-emerald-900: #044430;
+
+  --color-orange-50: #fdefdc;
+  --color-orange-100: #fbe0bd;
+  --color-orange-200: #f8cd96;
+  --color-orange-300: #f2b46a;
+  --color-orange-500: #e07a1b;
+  --color-orange-600: #c96a12;
+  --color-orange-700: #a85710;
+  --color-orange-800: #8a4708;
+  --color-orange-900: #6b3706;
+
+  --color-amber-50: #fdefdc;
+  --color-amber-200: #f8cd96;
+  --color-amber-500: #e07a1b;
+  --color-amber-700: #a85710;
+  --color-amber-800: #8a4708;
+  --color-amber-900: #6b3706;
+
+  /* --- Tipografía ---------------------------------------------------- */
+  --font-display: 'Bricolage Grotesque Variable', 'Plus Jakarta Sans Variable', system-ui, sans-serif;
+  --font-sans: 'Plus Jakarta Sans Variable', system-ui, -apple-system, sans-serif;
+
+  /* --- Radios DELIBERADAMENTE distintos por jerarquía ----------------
+     Héroe 28 · tarjeta 16 · control 10 · micro 6. Que no sea todo igual
+     es lo que evita el aspecto de plantilla. */
+  --radius-hero: 28px;
+  --radius-card: 16px;
+  --radius-control: 10px;
+  --radius-micro: 6px;
+
+  /* --- Sombra: morada y difusa, nunca gris ---------------------------- */
+  --shadow-lift: 0 1px 2px rgb(76 29 149 / 0.04), 0 8px 24px -8px rgb(76 29 149 / 0.12);
+  --shadow-float: 0 2px 4px rgb(76 29 149 / 0.04), 0 18px 44px -12px rgb(76 29 149 / 0.2);
+  --shadow-hero: 0 4px 8px rgb(76 29 149 / 0.05), 0 32px 72px -20px rgb(76 29 149 / 0.3);
+
+  /* --- Curvas de movimiento ------------------------------------------ */
+  --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-spring: cubic-bezier(0.34, 1.42, 0.48, 1);
 }
 
 @layer base {
@@ -55,125 +120,213 @@
 
   body {
     background-color: var(--color-canvas);
-    color: #0f172a;
+    color: var(--color-ink);
     font-family: var(--font-sans);
-    font-feature-settings: 'cv02', 'cv03', 'cv04', 'ss01';
-    /* Área segura en móviles con notch / barra de gestos */
-    padding-bottom: env(safe-area-inset-bottom);
+    font-optical-sizing: auto;
     overscroll-behavior-y: none;
+    /* El texto sobre cristal necesita este ajuste o se ve engordado. */
+    -webkit-font-smoothing: antialiased;
   }
 
-  /* Foco visible y consistente en toda la app (a11y, WCAG 2.4.7) */
+  h1, h2, h3 {
+    font-family: var(--font-display);
+    letter-spacing: -0.02em;
+  }
+
   :focus-visible {
-    outline: 2px solid var(--color-brand-600);
-    outline-offset: 2px;
-    border-radius: 2px;
-  }
-
-  /* Cifras siempre alineadas: relojes y contadores no deben "bailar" */
-  .tnum {
-    font-variant-numeric: tabular-nums;
-    font-feature-settings: 'tnum';
+    outline: 2px solid var(--color-violet-600);
+    outline-offset: 3px;
+    border-radius: 4px;
   }
 
   ::selection {
-    background: var(--color-brand-100);
-    color: var(--color-brand-900);
+    background: var(--color-violet-200);
+    color: var(--color-violet-900);
+  }
+
+  /* Cifras que se comparan en columna nunca deben bailar. */
+  .tnum {
+    font-variant-numeric: tabular-nums;
   }
 }
 
 @layer components {
-  /* Rejilla de fondo sutil: da textura sin ruido visual */
-  .grid-backdrop {
-    background-image:
-      linear-gradient(to right, rgba(15, 23, 42, 0.035) 1px, transparent 1px),
-      linear-gradient(to bottom, rgba(15, 23, 42, 0.035) 1px, transparent 1px);
-    background-size: 44px 44px;
+  /* --- AURORA -------------------------------------------------------
+     Tres manchas de luz que se desplazan muy despacio. El tono lo fija
+     una variable que cambia con el estado de la jornada. */
+  .aurora {
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    overflow: hidden;
+    pointer-events: none;
+    background: var(--color-canvas);
   }
 
-  /* --- Botón de mantener pulsado --------------------------------------
-     El destello y el rebote de la marca de visto son la recompensa al
-     completar el gesto: breves, una sola vez, sin rebotes elásticos. */
-  .hold-flash {
-    animation: hold-flash 520ms ease-out forwards;
+  .aurora::before,
+  .aurora::after {
+    content: '';
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(80px);
+    opacity: 0.55;
+    will-change: transform;
   }
 
-  @keyframes hold-flash {
-    0% {
-      opacity: 0.42;
-    }
-    100% {
-      opacity: 0;
-    }
+  .aurora::before {
+    width: 60vmax;
+    height: 60vmax;
+    top: -22vmax;
+    left: -14vmax;
+    background: radial-gradient(circle at 50% 50%, var(--aurora-a, #c4a6fc), transparent 68%);
+    animation: aurora-drift-a 34s var(--ease-out-soft) infinite alternate;
   }
 
-  /* Latido del botón entero al completar: acuse de recibo físico, sin texto
-     que pueda contradecir el rótulo ya actualizado a la acción siguiente. */
-  .hold-complete {
-    animation: hold-complete 460ms cubic-bezier(0.22, 1, 0.36, 1);
+  .aurora::after {
+    width: 52vmax;
+    height: 52vmax;
+    right: -18vmax;
+    bottom: -20vmax;
+    background: radial-gradient(circle at 50% 50%, var(--aurora-b, #a855f7), transparent 68%);
+    animation: aurora-drift-b 42s var(--ease-out-soft) infinite alternate;
   }
 
-  @keyframes hold-complete {
-    0% {
-      transform: scale(0.985);
-    }
-    35% {
-      transform: scale(1.018);
-    }
-    100% {
-      transform: scale(1);
-    }
+  /* Tercera luz, más pequeña y saturada, para que no sea un degradado plano. */
+  .aurora-spark {
+    position: absolute;
+    width: 34vmax;
+    height: 34vmax;
+    top: 38%;
+    left: 46%;
+    border-radius: 50%;
+    filter: blur(90px);
+    opacity: 0.4;
+    background: radial-gradient(circle at 50% 50%, var(--aurora-c, #ede4ff), transparent 70%);
+    animation: aurora-drift-c 28s var(--ease-out-soft) infinite alternate;
   }
 
-  /* Fichaje recién registrado: entra con un anillo morado que se disuelve.
-     Es la confirmación, y además señala dónde ha quedado anotado. */
-  .chip-nuevo {
-    animation: chip-nuevo 2s cubic-bezier(0.22, 1, 0.36, 1);
+  @keyframes aurora-drift-a {
+    from { transform: translate3d(0, 0, 0) scale(1); }
+    to   { transform: translate3d(12vmax, 8vmax, 0) scale(1.18); }
+  }
+  @keyframes aurora-drift-b {
+    from { transform: translate3d(0, 0, 0) scale(1.1); }
+    to   { transform: translate3d(-14vmax, -10vmax, 0) scale(0.92); }
+  }
+  @keyframes aurora-drift-c {
+    from { transform: translate3d(-6vmax, 4vmax, 0); }
+    to   { transform: translate3d(8vmax, -8vmax, 0); }
   }
 
-  @keyframes chip-nuevo {
-    0% {
-      transform: scale(0.9);
-      box-shadow: 0 0 0 0 var(--color-brand-500);
-    }
-    12% {
-      transform: scale(1.04);
-    }
-    30% {
-      transform: scale(1);
-    }
-    100% {
-      box-shadow: 0 0 0 6px rgba(168, 85, 247, 0);
-    }
+  /* La luz responde al estado: es la señal que se lee antes que el texto. */
+  [data-estado='working'] {
+    --aurora-a: #7ee2be;
+    --aurora-b: #a855f7;
+    --aurora-c: #d9f7ec;
+  }
+  [data-estado='break'] {
+    --aurora-a: #fbc78a;
+    --aurora-b: #c084fc;
+    --aurora-c: #fdefdc;
+  }
+  [data-estado='off'] {
+    --aurora-a: #c4a6fc;
+    --aurora-b: #a855f7;
+    --aurora-c: #ede4ff;
   }
 
-  /* Aviso de error sobre los botones: entra sin desplazar el diseño. */
-  .punch-toast {
-    animation: punch-toast 220ms ease-out;
+  /* --- CRISTAL -------------------------------------------------------
+     El borde superior claro y el inferior oscuro simulan un canto real:
+     sin eso el "cristal" parece un rectángulo translúcido cualquiera. */
+  .glass {
+    background: var(--color-glass);
+    backdrop-filter: blur(20px) saturate(1.6);
+    -webkit-backdrop-filter: blur(20px) saturate(1.6);
+    border: 1px solid rgb(255 255 255 / 0.7);
+    box-shadow:
+      var(--shadow-lift),
+      inset 0 1px 0 0 rgb(255 255 255 / 0.9),
+      inset 0 -1px 0 0 rgb(27 10 51 / 0.04);
   }
 
-  @keyframes punch-toast {
+  .glass-strong {
+    background: var(--color-glass-strong);
+    backdrop-filter: blur(28px) saturate(1.8);
+    -webkit-backdrop-filter: blur(28px) saturate(1.8);
+    border: 1px solid rgb(255 255 255 / 0.8);
+    box-shadow:
+      var(--shadow-float),
+      inset 0 1px 0 0 rgb(255 255 255 / 0.95);
+  }
+
+  /* Etiqueta micro: estructura la interfaz sin gritar. */
+  .eyebrow {
+    font-size: 10px;
+    line-height: 1;
+    font-weight: 700;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--color-ink-faint);
+  }
+
+  /* --- ENTRADA ESCALONADA -------------------------------------------
+     Las superficies no aparecen de golpe: suben y se enfocan. */
+  .rise {
+    animation: rise 0.55s var(--ease-out-soft) both;
+  }
+
+  @keyframes rise {
     from {
       opacity: 0;
-      transform: translateY(4px);
+      transform: translateY(14px) scale(0.985);
+      filter: blur(6px);
     }
     to {
       opacity: 1;
-      transform: translateY(0);
+      transform: none;
+      filter: blur(0);
     }
   }
 
-  /* Etiqueta micro: la unidad tipográfica que estructura la interfaz */
-  .micro-label {
-    font-size: 10px;
-    line-height: 1;
-    font-weight: 600;
-    letter-spacing: 0.09em;
-    text-transform: uppercase;
-    color: #64748b;
+  /* --- CAMBIO DE PÁGINA ----------------------------------------------
+     Entrada corta y sin desplazamiento lateral: navegar debe sentirse
+     inmediato, no como una diapositiva. */
+  .page-enter {
+    animation: page-enter 0.42s var(--ease-out-soft) both;
+  }
+
+  @keyframes page-enter {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: none; }
+  }
+
+  /* --- DÍGITO QUE GIRA ------------------------------------------------ */
+  /* El giro del dígito nunca llega a opacidad cero: los segundos cambian cada
+     segundo y, con una entrada desde invisible, la cifra pasaba media vida en
+     blanco y parecía un fallo de renderizado. */
+  .digit-roll {
+    animation: digit-roll 0.26s var(--ease-out-soft);
+  }
+
+  @keyframes digit-roll {
+    0%   { transform: translateY(-0.34em) rotateX(42deg); opacity: 0.35; }
+    100% { transform: none; opacity: 1; }
+  }
+
+  /* Latido del pulso en vivo. */
+  .pulse-ring {
+    animation: pulse-ring 2.4s var(--ease-out-soft) infinite;
+  }
+
+  @keyframes pulse-ring {
+    0%   { transform: scale(1);   opacity: 0.6; }
+    70%  { transform: scale(2.4); opacity: 0; }
+    100% { transform: scale(2.4); opacity: 0; }
   }
 }
 
+/* Quien pide menos movimiento recibe la interfaz quieta, pero completa:
+   la aurora se congela en una posición bonita, no desaparece. */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,

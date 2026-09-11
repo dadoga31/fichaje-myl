@@ -148,7 +148,7 @@ export function CorrectionsPage() {
                   className={
                     'px-3 py-2 text-[13px] font-medium transition-colors ' +
                     (mode === value
-                      ? 'bg-brand-800 text-white'
+                      ? 'bg-violet-800 text-white'
                       : 'bg-white text-slate-600 hover:bg-slate-50')
                   }
                 >
