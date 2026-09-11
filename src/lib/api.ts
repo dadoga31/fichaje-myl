@@ -8,7 +8,7 @@
  * Los componentes no saben cuál está activa.
  */
 import { isDemoMode, requireSupabase } from './supabase'
-import { demoApi } from './demo'
+import { demoApi, subscribeDemo } from './demo'
 import type {
   Company,
   CorrectionRequest,
@@ -307,6 +307,43 @@ export async function logAccess(input: {
     period_start: input.periodStart,
     period_end: input.periodEnd,
   })
+}
+
+/**
+ * SINCRONIZACIÓN EN TIEMPO REAL
+ *
+ * Supabase Realtime empuja cada cambio por WebSocket, así que un fichaje
+ * aparece en el panel de quien supervisa en el mismo instante, sin recargar
+ * ni esperar a un sondeo.
+ *
+ * La difusión respeta la RLS de cada suscriptor: la persona trabajadora solo
+ * recibe sus propios fichajes; administración, los de su empresa. Nadie
+ * recibe lo que no podría consultar.
+ *
+ * Devuelve la función para cancelar la suscripción.
+ */
+export function subscribeToChanges(
+  tables: Array<'time_entries' | 'correction_requests' | 'profiles'>,
+  onChange: () => void,
+): () => void {
+  if (isDemoMode) {
+    // En demo no hay servidor: solo se sincronizan las pestañas de este
+    // navegador. Entre dispositivos distintos es imposible sin backend.
+    return subscribeDemo(onChange)
+  }
+
+  const sb = requireSupabase()
+  const channel = sb.channel(`fichaje-${tables.join('-')}`)
+
+  for (const table of tables) {
+    channel.on('postgres_changes', { event: '*', schema: 'public', table }, () => onChange())
+  }
+
+  channel.subscribe()
+
+  return () => {
+    void sb.removeChannel(channel)
+  }
 }
 
 /** Prueba de integridad de la cadena hash (solo con Supabase). */

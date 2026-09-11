@@ -43,21 +43,47 @@ end $$;
 \echo ''
 \echo '--- Preparando escenario de prueba ---'
 
-insert into auth.users (id, email) values
-  ('11111111-1111-1111-1111-111111111111', 'ana@acme.test'),
-  ('22222222-2222-2222-2222-222222222222', 'rrhh@acme.test'),
-  ('33333333-3333-3333-3333-333333333333', 'espia@otra.test'),
-  ('44444444-4444-4444-4444-444444444444', 'inspeccion@acme.test');
-
 insert into public.companies (id, name, cif, geolocation_policy) values
   ('aaaaaaaa-0000-0000-0000-000000000001', 'ACME Servicios SL', 'B12345678', 'disabled'),
   ('bbbbbbbb-0000-0000-0000-000000000002', 'Otra Empresa SA',   'B87654321', 'disabled');
 
-insert into public.profiles (id, company_id, full_name, email, role, employee_number) values
-  ('11111111-1111-1111-1111-111111111111', 'aaaaaaaa-0000-0000-0000-000000000001', 'Ana Pérez',    'ana@acme.test',        'employee',  'E-001'),
-  ('22222222-2222-2222-2222-222222222222', 'aaaaaaaa-0000-0000-0000-000000000001', 'Luis RRHH',    'rrhh@acme.test',       'admin',     'A-001'),
-  ('33333333-3333-3333-3333-333333333333', 'bbbbbbbb-0000-0000-0000-000000000002', 'Espía Rival',  'espia@otra.test',      'admin',     'X-001'),
-  ('44444444-4444-4444-4444-444444444444', 'aaaaaaaa-0000-0000-0000-000000000001', 'Inspección',   'inspeccion@acme.test', 'inspector', 'I-001');
+-- Los perfiles NO se crean a mano: se dan de alta en Auth con sus metadatos,
+-- igual que en producción, y el trigger handle_new_auth_user() los crea.
+-- Así la propia batería comprueba el camino real de alta de personas.
+insert into auth.users (id, email, raw_user_meta_data) values
+  ('11111111-1111-1111-1111-111111111111', 'ana@acme.test',
+     '{"company_id":"aaaaaaaa-0000-0000-0000-000000000001","role":"employee","full_name":"Ana Pérez","employee_number":"E-001"}'),
+  ('22222222-2222-2222-2222-222222222222', 'rrhh@acme.test',
+     '{"company_id":"aaaaaaaa-0000-0000-0000-000000000001","role":"admin","full_name":"Luis RRHH","employee_number":"A-001"}'),
+  ('33333333-3333-3333-3333-333333333333', 'espia@otra.test',
+     '{"company_id":"bbbbbbbb-0000-0000-0000-000000000002","role":"admin","full_name":"Espía Rival","employee_number":"X-001"}'),
+  ('44444444-4444-4444-4444-444444444444', 'inspeccion@acme.test',
+     '{"company_id":"aaaaaaaa-0000-0000-0000-000000000001","role":"inspector","full_name":"Inspección","employee_number":"I-001"}');
+
+select pg_temp.assert(count(*) = 4, 'El alta en Auth crea el perfil automáticamente, con su rol y empresa')
+  from public.profiles
+ where role = 'admin' or role = 'employee' or role = 'inspector';
+
+select pg_temp.assert(
+  full_name = 'Ana Pérez' and employee_number = 'E-001' and role = 'employee'
+  and company_id = 'aaaaaaaa-0000-0000-0000-000000000001',
+  'Los metadatos del alta llegan íntegros al perfil')
+  from public.profiles where id = '11111111-1111-1111-1111-111111111111';
+
+-- Sin nombre en los metadatos, se deriva del correo en vez de quedar vacío.
+insert into auth.users (id, email, raw_user_meta_data) values
+  ('55555555-5555-5555-5555-555555555555', 'nuria.gomez@acme.test',
+     '{"company_id":"aaaaaaaa-0000-0000-0000-000000000001"}');
+
+select pg_temp.assert(full_name = 'Nuria Gomez' and role = 'employee',
+  'Sin nombre explícito se deriva del correo y el rol por defecto es employee')
+  from public.profiles where id = '55555555-5555-5555-5555-555555555555';
+
+-- Un alta ambigua (dos empresas y sin company_id) se rechaza en vez de
+-- adjudicar la persona a la empresa equivocada.
+select pg_temp.assert_fails(
+  $$insert into auth.users (id, email) values (gen_random_uuid(), 'huerfano@ninguna.test')$$,
+  'Un alta sin empresa, habiendo varias, es rechazada');
 
 -- Helper para "iniciar sesión" como un usuario concreto bajo RLS.
 create or replace function pg_temp.login(p_uid text)

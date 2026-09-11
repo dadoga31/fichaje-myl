@@ -33,30 +33,47 @@ Detalle completo en [`docs/CUMPLIMIENTO.md`](docs/CUMPLIMIENTO.md).
 
 ```bash
 npm install
-npm run dev          # http://localhost:5173
+cp .env.example .env.local     # y rellene URL y anon key
+npm run dev                    # http://localhost:5173
 ```
 
-Sin credenciales de Supabase la aplicación arranca en **modo demo**, con una
-plantilla ficticia y dos meses de historial en el navegador. Sirve para
-evaluar la interfaz completa sin desplegar nada.
+**Sin credenciales la aplicación no arranca**: muestra una pantalla de
+configuración y bloquea el acceso. Es deliberado — un registro de jornada que
+vive en el `localStorage` de cada móvil no prueba nada ante una Inspección, así
+que es preferible que nadie entre a que la plantilla fiche contra el navegador.
 
-### Con Supabase
+Para ver la interfaz con datos de ejemplo, sin base de datos y sin valor legal:
 
 ```bash
-cp .env.example .env.local     # y rellene URL y anon key
+npm run dev:demo
 ```
 
-Aplique las migraciones en orden desde el editor SQL de Supabase o con la CLI:
+### Despliegue en producción
+
+Guía completa en **[`docs/DESPLIEGUE.md`](docs/DESPLIEGUE.md)**: crear el
+proyecto de Supabase, aplicar las migraciones, dar de alta la empresa y a las
+personas reales, y conectar Vercel.
+
+### Migraciones
+
+Se aplican en orden desde el editor SQL de Supabase:
 
 ```
-supabase/migrations/0001_schema.sql        Tablas y tipos
-supabase/migrations/0002_immutability.sql  Inalterabilidad, sellado, auditoría
-supabase/migrations/0003_rls.sql           Row Level Security
-supabase/migrations/0004_operations.sql    RPC transaccionales y vistas
+supabase/migrations/0001_schema.sql            Tablas y tipos
+supabase/migrations/0002_immutability.sql      Inalterabilidad, sellado, auditoría
+supabase/migrations/0003_rls.sql               Row Level Security
+supabase/migrations/0004_operations.sql        RPC transaccionales y vistas
+supabase/migrations/0005_realtime_y_altas.sql  Tiempo real y alta de personas
 ```
 
-Después, cree una empresa en `companies` y un perfil en `profiles` por cada
-usuario de `auth.users` (el `id` del perfil es el del usuario de Supabase Auth).
+Las personas se dan de alta desde un CSV; el perfil se crea solo:
+
+```bash
+export SUPABASE_URL=https://xxxxx.supabase.co
+export SUPABASE_SERVICE_KEY=eyJ...                   # clave service_role
+node scripts/alta-personas.mjs plantilla.csv --dry-run
+node scripts/alta-personas.mjs plantilla.csv
+```
 
 ### Pruebas de cumplimiento
 
@@ -66,7 +83,7 @@ Se ejecutan contra cualquier PostgreSQL local, sin necesidad de Supabase:
 ./supabase/test/run-tests.sh
 ```
 
-35 aserciones que intentan romper activamente cada garantía legal.
+39 aserciones que intentan romper activamente cada garantía legal.
 
 ---
 
@@ -154,6 +171,19 @@ Supabase (PostgreSQL + RLS) · lucide-react.
 
 Los generadores de PDF y Excel se cargan bajo demanda: la pantalla de fichaje
 no arrastra medio megabyte de dependencias que casi nadie usa desde el móvil.
+
+---
+
+## Sincronización en tiempo real
+
+Cada fichaje llega empujado por el servidor a través de Supabase Realtime: lo
+que una persona ficha aparece en el panel de quien supervisa en el mismo
+instante, sin recargar. La difusión respeta la RLS de cada suscriptor —la
+persona trabajadora solo recibe sus propios fichajes; administración, los de su
+empresa—, así que sincronizar no abre ningún agujero de privacidad.
+
+Si el WebSocket se cae (un móvil que se duerme, una red inestable), un sondeo
+de 60 segundos recupera el estado sin que nadie tenga que recargar.
 
 ---
 

@@ -13,7 +13,7 @@ import {
   cx,
   inputClass,
 } from '../components/ui'
-import { getStaffLive } from '../lib/api'
+import { getStaffLive, subscribeToChanges } from '../lib/api'
 import { ENTRY_LABEL, type StaffLiveStatus, type WorkStatus } from '../lib/types'
 import { formatTime } from '../lib/time'
 import { useTicker } from '../hooks/useTicker'
@@ -30,14 +30,22 @@ export function TeamPage() {
   const [loading, setLoading] = useState(true)
   const [filter, setFilter] = useState<WorkStatus | 'all'>('all')
   const [query, setQuery] = useState('')
-  const now = useTicker(30_000)
+  const now = useTicker(60_000)
 
   const load = useCallback(async () => {
     setStaff(await getStaffLive())
     setLoading(false)
   }, [])
 
-  // Vista "en vivo": se recarga al montar y cada vez que avanza el reloj de 30 s.
+  // Vista en vivo de verdad: cada fichaje de la plantilla llega empujado por
+  // el servidor, así que el panel cambia en el mismo instante.
+  useEffect(() => {
+    void load()
+    return subscribeToChanges(['time_entries'], () => void load())
+  }, [load])
+
+  // Red de seguridad: si el WebSocket se cae (túnel, móvil que se duerme),
+  // el reloj de 60 s vuelve a traer el estado sin que nadie tenga que recargar.
   useEffect(() => {
     void load()
   }, [now, load])

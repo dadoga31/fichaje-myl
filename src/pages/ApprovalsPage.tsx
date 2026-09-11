@@ -14,7 +14,12 @@ import {
   cx,
   textareaClass,
 } from '../components/ui'
-import { getCorrectionAudits, getRequests, reviewRequest } from '../lib/api'
+import {
+  getCorrectionAudits,
+  getRequests,
+  reviewRequest,
+  subscribeToChanges,
+} from '../lib/api'
 import { ENTRY_LABEL, type CorrectionRequest, type TimeEntryAudit } from '../lib/types'
 import { formatDate, formatTime } from '../lib/time'
 
@@ -39,8 +44,10 @@ export function ApprovalsPage() {
     setLoading(false)
   }, [])
 
+  // Una solicitud nueva aparece en la bandeja sin recargar.
   useEffect(() => {
     void load()
+    return subscribeToChanges(['correction_requests', 'time_entries'], () => void load())
   }, [load])
 
   async function resolve(request: CorrectionRequest, approve: boolean) {

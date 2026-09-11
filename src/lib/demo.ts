@@ -318,9 +318,36 @@ function load(): DemoState {
   return state
 }
 
+/** Oyentes de cambios, para que la demo también se refresque sola. */
+const demoListeners = new Set<() => void>()
+
 function save(): void {
   if (!state) return
   safeStorage.set(STORAGE_KEY, JSON.stringify(state))
+  for (const listener of demoListeners) listener()
+}
+
+/**
+ * Suscripción a cambios en modo demostración. Solo alcanza a las pestañas
+ * de ESTE navegador (evento `storage` entre pestañas), porque la demo no
+ * tiene servidor: los datos viven en el propio dispositivo. Para que una
+ * jornada aparezca en el móvil de otra persona hace falta el backend real.
+ */
+export function subscribeDemo(onChange: () => void): () => void {
+  demoListeners.add(onChange)
+
+  const onStorage = (event: StorageEvent) => {
+    if (event.key === STORAGE_KEY) {
+      state = null // otra pestaña escribió: releer desde el almacenamiento
+      onChange()
+    }
+  }
+  window.addEventListener('storage', onStorage)
+
+  return () => {
+    demoListeners.delete(onChange)
+    window.removeEventListener('storage', onStorage)
+  }
 }
 
 export function resetDemo(): void {

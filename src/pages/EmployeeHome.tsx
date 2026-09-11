@@ -4,7 +4,7 @@ import { PunchPanel } from '../components/PunchPanel'
 import { Spinner } from '../components/ui'
 import { useOnlineStatus } from '../hooks/useOnlineStatus'
 import { useGeolocation } from '../hooks/useGeolocation'
-import { getEntries, punch } from '../lib/api'
+import { getEntries, punch, subscribeToChanges } from '../lib/api'
 import { enqueuePunch, flushQueue, subscribeQueue } from '../lib/offlineQueue'
 import type { EntryType, QueuedPunch, TimeEntry } from '../lib/types'
 import { toISODate } from '../lib/time'
@@ -36,6 +36,10 @@ export function EmployeeHome() {
 
   useEffect(() => {
     void load()
+    // Si se ficha desde otro dispositivo (o administración rectifica un
+    // fichaje), esta pantalla se entera al momento en vez de quedarse
+    // mostrando un estado que ya no es cierto.
+    return subscribeToChanges(['time_entries'], () => void load())
   }, [load])
 
   useEffect(() => subscribeQueue(setQueued), [])

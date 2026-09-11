@@ -21,7 +21,7 @@ console.log('▸ Compilando en modo demo…')
 execFileSync('npx', ['vite', 'build', '--mode', 'demo'], {
   cwd: ROOT,
   stdio: 'inherit',
-  env: { ...process.env, VITE_HASH_ROUTER: 'true' },
+  env: { ...process.env, VITE_HASH_ROUTER: 'true', VITE_DEMO: 'true' },
 })
 
 const assets = join(DIST, 'assets')

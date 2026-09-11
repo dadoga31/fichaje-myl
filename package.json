@@ -12,7 +12,8 @@
     "lint": "tsc -b",
     "build:demo": "node scripts/build-demo.mjs",
     "test:db": "./supabase/test/run-tests.sh",
-    "icons": "node scripts/generate-icons.mjs"
+    "icons": "node scripts/generate-icons.mjs",
+    "dev:demo": "VITE_DEMO=true vite"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.112.3",

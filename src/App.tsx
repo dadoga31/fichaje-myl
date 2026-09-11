@@ -11,6 +11,8 @@ import { ApprovalsPage } from './pages/ApprovalsPage'
 import { ReportsPage } from './pages/ReportsPage'
 import { InspectionPage } from './pages/InspectionPage'
 import { SettingsPage } from './pages/SettingsPage'
+import { SetupPage } from './pages/SetupPage'
+import { isMisconfigured } from './lib/supabase'
 import type { UserRole } from './lib/types'
 
 /** Ruta restringida por rol. Sin permiso, se devuelve al inicio sin drama. */
@@ -23,6 +25,9 @@ function Guarded({ roles, children }: { roles: UserRole[]; children: React.React
 
 export default function App() {
   const { session, loading } = useSession()
+
+  // Sin backend configurado no se entra: ni siquiera a la pantalla de acceso.
+  if (isMisconfigured) return <SetupPage />
 
   if (loading) {
     return (
