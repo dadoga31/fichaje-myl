@@ -197,13 +197,33 @@ documentada.
 
 ---
 
-## Diseño
+## Diseño — sistema «Aurora»
 
-Estética *Minimal Stark*: bordes finos, radios contenidos, alta densidad
-informativa y tipografía tabular en toda cifra que deba compararse. El morado
-corporativo (`#6B21A8`) se reserva para la acción y el estado; el color de
-estado —verde en jornada, naranja en pausa, gris fuera de jornada— nunca es la
-única señal, siempre va acompañado de texto.
+Cristal esmerilado blanco flotando sobre luz morada. Dos ideas lo sostienen:
+
+**La luz responde al estado.** El fondo de la aplicación cambia de tono con la
+jornada —verde en jornada, ámbar en pausa, morado en reposo—, de modo que la
+pantalla dice en qué situación estás antes de leer una sola palabra. El color
+nunca va solo: siempre lo acompañan texto e icono.
+
+**El anillo es reloj y progreso a la vez.** Sustituye a la barra plana porque
+es la forma que ya significa «tiempo», y su trazo se colorea con el mismo
+código que la luz del fondo.
+
+| Elemento | Decisión |
+|---|---|
+| Tinta | `#1B0A33`, negro violáceo — nunca gris lavado |
+| Neutros | Toda la escala gris está teñida hacia el violeta: un gris puro delataría que el color se heredó en vez de elegirse |
+| Radios | 28 px en superficies héroe · 16 px en tarjetas · 10 px en controles. Que no sea todo igual es lo que evita el aspecto de plantilla |
+| Sombras | Moradas y difusas, jamás grises |
+| Tipografía | Bricolage Grotesque (display y reloj) + Plus Jakarta Sans (interfaz), autoalojadas para que la PWA se vea igual sin conexión |
+
+El reloj gira cada cifra por separado y solo la que cambia. Su animación nunca
+baja de opacidad 0.35: partiendo de invisible, el dígito de los segundos pasaba
+media vida en blanco y parecía un fallo de renderizado.
+
+Con `prefers-reduced-motion` la interfaz se queda quieta pero completa: la
+aurora se congela en una posición, no desaparece.
 
 Los iconos de la PWA se generan con `node scripts/generate-icons.mjs`, que
 rasteriza el logotipo y codifica los PNG sin librerías gráficas.

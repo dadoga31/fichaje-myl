@@ -194,7 +194,7 @@ export function ReportsPage() {
                             checked={isOn}
                             onChange={() => toggle(report.profile.id)}
                             aria-label={`Incluir a ${report.profile.full_name}`}
-                            className="h-4 w-4 accent-brand-800"
+                            className="h-4 w-4 accent-violet-800"
                           />
                         </td>
                         <td className="px-2 py-2.5">
@@ -218,7 +218,7 @@ export function ReportsPage() {
                         <td
                           className={cx(
                             'tnum px-2 py-2.5 text-right text-[13px]',
-                            overtime > 0 && isOn && 'font-semibold text-brand-800',
+                            overtime > 0 && isOn && 'font-semibold text-violet-800',
                           )}
                         >
                           {overtime > 0

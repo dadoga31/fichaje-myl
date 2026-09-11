@@ -124,7 +124,7 @@ export function SettingsPage() {
                   className={cx(
                     'flex items-start justify-between gap-4 rounded-[4px] border px-3 py-3',
                     profile.geo_consent
-                      ? 'border-brand-200 bg-brand-50'
+                      ? 'border-violet-200 bg-violet-50'
                       : 'border-slate-200 bg-white',
                   )}
                 >
@@ -160,14 +160,14 @@ export function SettingsPage() {
           <PanelHeader title="Sus datos y sus derechos" />
           <div className="flex flex-col gap-3 px-4 py-4">
             <p className="flex items-start gap-2 text-[13px] leading-relaxed text-slate-700">
-              <ShieldCheck size={15} className="mt-0.5 shrink-0 text-brand-700" />
+              <ShieldCheck size={15} className="mt-0.5 shrink-0 text-violet-700" />
               Sus fichajes son inalterables: nadie, tampoco la administración de su
               empresa, puede modificarlos ni borrarlos. Toda rectificación queda
               documentada con su motivo y su autor, y usted puede consultarla en su
               historial.
             </p>
             <p className="flex items-start gap-2 text-[13px] leading-relaxed text-slate-700">
-              <Database size={15} className="mt-0.5 shrink-0 text-brand-700" />
+              <Database size={15} className="mt-0.5 shrink-0 text-violet-700" />
               El registro se conserva {company.retention_years} años a disposición de usted,
               de la representación legal de la plantilla y de la Inspección de Trabajo.
               Puede descargar su resumen mensual desde «Mi historial».

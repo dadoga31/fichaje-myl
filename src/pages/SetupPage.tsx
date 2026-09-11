@@ -14,7 +14,7 @@ export function SetupPage() {
     <div className="flex min-h-dvh items-center justify-center px-5 py-10">
       <div className="w-full max-w-lg">
         <div className="mb-6 flex items-center gap-2.5">
-          <span className="flex h-8 w-8 items-center justify-center rounded-[4px] bg-brand-800 text-white">
+          <span className="flex h-8 w-8 items-center justify-center rounded-[4px] bg-violet-800 text-white">
             <Timer size={18} strokeWidth={2.4} />
           </span>
           <span className="text-sm font-semibold tracking-tight text-slate-900">
@@ -54,9 +54,9 @@ VITE_SUPABASE_ANON_KEY=eyJhbGciOi...`}
             </p>
 
             <p className="mt-4 border-t border-slate-200 pt-4 text-[12px] leading-relaxed text-slate-500">
-              Los pasos completos están en <code className="text-brand-800">docs/DESPLIEGUE.md</code>.
+              Los pasos completos están en <code className="text-violet-800">docs/DESPLIEGUE.md</code>.
               Para ver la interfaz con datos de ejemplo, sin base de datos, compile
-              con <code className="text-brand-800">VITE_DEMO=true</code>.
+              con <code className="text-violet-800">VITE_DEMO=true</code>.
             </p>
           </div>
         </Panel>

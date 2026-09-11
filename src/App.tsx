@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { useSession } from './context/SessionContext'
 import { Layout } from './components/Layout'
+import { AmbientProvider, useAmbient } from './context/AmbientContext'
 import { Spinner } from './components/ui'
 import { LoginPage } from './pages/LoginPage'
 import { EmployeeHome } from './pages/EmployeeHome'
@@ -39,11 +40,24 @@ export default function App() {
 
   if (!session) return <LoginPage />
 
+  return (
+    <AmbientProvider>
+      <Shell />
+    </AmbientProvider>
+  )
+}
+
+/** Separado de App para poder leer el ambiente dentro del proveedor. */
+function Shell() {
+  const { session } = useSession()
+  const { status } = useAmbient()
+  if (!session) return null
+
   // La Inspección no ficha: su punto de entrada es la vista de consulta.
   const isInspector = session.profile.role === 'inspector'
 
   return (
-    <Layout>
+    <Layout status={status}>
       <Routes>
         <Route
           path="/"
