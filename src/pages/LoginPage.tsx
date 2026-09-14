@@ -77,7 +77,7 @@ export function LoginPage() {
           >
             {[
               { k: '4 años', v: 'de conservación garantizada' },
-              { k: 'SHA-256', v: 'sella cada asiento' },
+              { k: 'Inalterable', v: 'no se modifica ni se borra' },
               { k: 'Art. 34.9', v: 'del Estatuto de los Trabajadores' },
             ].map((item) => (
               <div key={item.k} className="glass rounded-[14px] px-3 py-2.5 sm:px-3.5 sm:py-3">

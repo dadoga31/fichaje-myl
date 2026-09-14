@@ -46,26 +46,12 @@ export default defineConfig(({ mode }) => {
         globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
         cleanupOutdatedCaches: true,
         navigateFallback: '/index.html',
-        // Nunca cachear las llamadas de escritura del ledger: los fichajes offline
-        // se encolan en IndexedDB y se sincronizan de forma explícita y auditada.
-        navigateFallbackDenylist: [/^\/rest\//, /^\/auth\//],
-        runtimeCaching: [
-          {
-            urlPattern: ({ url }) => url.pathname.startsWith('/rest/v1/'),
-            handler: 'NetworkOnly',
-            method: 'POST',
-          },
-          {
-            urlPattern: ({ url }) => url.pathname.startsWith('/rest/v1/'),
-            handler: 'NetworkFirst',
-            method: 'GET',
-            options: {
-              cacheName: 'api-lectura',
-              networkTimeoutSeconds: 5,
-              expiration: { maxEntries: 200, maxAgeSeconds: 60 * 60 * 24 },
-            },
-          },
-        ],
+        // Firestore no viaja por HTTP cacheable: habla por WebChannel con
+        // googleapis.com y gestiona su propia persistencia en IndexedDB. No
+        // hay nada de la API que el service worker deba cachear, y las reglas
+        // que había aquí apuntaban a rutas /rest/v1/ de Supabase que ya no
+        // existen. El caché de datos lo pone `persistentLocalCache` en
+        // src/lib/firebase.ts.
       },
       devOptions: { enabled: false },
     })]),
@@ -93,6 +79,10 @@ export default defineConfig(({ mode }) => {
         cssCodeSplit: false,
       }
     : {},
+  // Sello de compilación. Sin esto es imposible distinguir desde el
+  // dispositivo si falta reconstruir en Vercel o si el service worker está
+  // sirviendo una versión antigua desde la caché.
+  define: { __BUILD_TIME__: JSON.stringify(new Date().toISOString()) },
   server: { port: 5173, host: true },
   }
 })
