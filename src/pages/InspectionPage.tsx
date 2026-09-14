@@ -270,8 +270,16 @@ export function InspectionPage() {
                               <Badge tone="neutral">diferido</Badge>
                             )}
 
-                            <span className="ml-auto font-mono text-[10px] text-slate-400">
-                              {entry.entry_hash.slice(0, 12)}…
+                            {/* Identificador del asiento: permite citar una
+                                linea concreta en un requerimiento. Antes aqui
+                                se imprimia el hash de la cadena SHA-256, que
+                                en Firestore ya no existe y se renderizaba
+                                como unos puntos suspensivos sueltos. */}
+                            <span
+                              className="ml-auto font-mono text-[10px] text-slate-400"
+                              title={`Identificador del asiento: ${entry.id}`}
+                            >
+                              {entry.id.slice(0, 10)}
                             </span>
                           </li>
                         )

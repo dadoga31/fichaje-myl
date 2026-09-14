@@ -27,6 +27,30 @@ const config = {
 
 export const isConfigured = Boolean(config.apiKey && config.projectId)
 
+/** Momento en que se compiló este bundle. Lo inyecta Vite. */
+export const buildTime = __BUILD_TIME__
+
+/**
+ * Qué variables llegaron realmente a la compilación.
+ *
+ * Vite incrusta estos valores en el JavaScript en tiempo de *build*, no de
+ * ejecución: definirlas en Vercel no cambia nada hasta que se vuelve a
+ * compilar. Sin este diagnóstico, «he puesto las variables y sigue igual» es
+ * indistinguible de «las he escrito mal», y ambas cosas se depuran a ciegas.
+ *
+ * Mostrar los valores no compromete nada: esta configuración es pública por
+ * diseño y ya viaja en el bundle. La clave de cuenta de servicio, que sí es
+ * secreta, nunca llega al navegador.
+ */
+export const configStatus: Array<{ key: string; value: string | undefined }> = [
+  { key: 'VITE_FIREBASE_API_KEY', value: config.apiKey },
+  { key: 'VITE_FIREBASE_AUTH_DOMAIN', value: config.authDomain },
+  { key: 'VITE_FIREBASE_PROJECT_ID', value: config.projectId },
+  { key: 'VITE_FIREBASE_STORAGE_BUCKET', value: config.storageBucket },
+  { key: 'VITE_FIREBASE_MESSAGING_SENDER_ID', value: config.messagingSenderId },
+  { key: 'VITE_FIREBASE_APP_ID', value: config.appId },
+]
+
 /**
  * El modo demostración es EXPLÍCITO: exige VITE_DEMO=true.
  *
