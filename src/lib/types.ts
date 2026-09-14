@@ -1,4 +1,4 @@
-/** Tipos de dominio. Espejo exacto del esquema SQL de supabase/migrations. */
+/** Tipos de dominio. Espejo de las colecciones de Firestore (ver firestore.rules). */
 
 export type UserRole = 'employee' | 'manager' | 'admin' | 'inspector'
 

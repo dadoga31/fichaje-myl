@@ -2,13 +2,33 @@
  * Capa de acceso a datos. Un único punto por el que pasan todas las lecturas
  * y escrituras, con dos implementaciones intercambiables:
  *
- *   · Supabase (producción): PostgreSQL con RLS, triggers y RPC.
- *   · Demo (sin credenciales): backend en memoria con las mismas reglas.
+ *   · Firebase (producción): Firestore con Security Rules, Auth y sincronización
+ *     en tiempo real.
+ *   · Demo (VITE_DEMO=true): backend en memoria con las mismas reglas, para
+ *     enseñar la interfaz sin desplegar nada.
  *
  * Los componentes no saben cuál está activa.
  */
-import { isDemoMode, requireSupabase } from './supabase'
+import { isConfigured, isDemoMode } from './firebase'
 import { demoApi, subscribeDemo } from './demo'
+import {
+  fbCreateRequest,
+  fbGetAudits,
+  fbGetDailySummaries,
+  fbGetEntries,
+  fbGetRawEntries,
+  fbGetRequests,
+  fbGetSession,
+  fbGetStaffLive,
+  fbListProfiles,
+  fbLogAccess,
+  fbPunch,
+  fbReviewRequest,
+  fbSignIn,
+  fbSignOut,
+  fbSubscribe,
+  fbUpdateGeoConsent,
+} from './firestore'
 import type {
   Company,
   CorrectionRequest,
@@ -26,42 +46,43 @@ export interface SessionUser {
   company: Company
 }
 
+/**
+ * La sesión activa, cacheada.
+ *
+ * Firestore necesita saber la empresa y el rol para casi todas las consultas,
+ * y pedirlos en cada llamada multiplicaría las lecturas facturables. Se
+ * refresca en cada `getSession()`, que es justo cuando puede haber cambiado.
+ */
+let sesion: SessionUser | null = null
+
+function requiereSesion(): SessionUser {
+  if (!sesion) throw new Error('No hay sesión iniciada.')
+  return sesion
+}
+
 // ---------------------------------------------------------------------
 // Sesión
 // ---------------------------------------------------------------------
 export async function getSession(): Promise<SessionUser | null> {
+  // Sin backend ni demo no hay nada que consultar: preguntar por la sesión
+  // lanzaría una excepción justo en la pantalla que explica cómo configurarlo.
+  if (!isConfigured && !isDemoMode) return null
+
   if (isDemoMode) {
     const userId = demoApi.getSessionUserId()
     if (!userId) return null
     const profile = demoApi.getProfile(userId)
     if (!profile) return null
-    return { profile, company: demoApi.getCompany() }
+    sesion = { profile, company: demoApi.getCompany() }
+    return sesion
   }
 
-  const sb = requireSupabase()
-  const { data } = await sb.auth.getUser()
-  if (!data.user) return null
-
-  const { data: profile, error } = await sb
-    .from('profiles')
-    .select('*')
-    .eq('id', data.user.id)
-    .single()
-  if (error || !profile) return null
-
-  const { data: company } = await sb
-    .from('companies')
-    .select('*')
-    .eq('id', profile.company_id)
-    .single()
-
-  return { profile: profile as Profile, company: company as Company }
+  sesion = await fbGetSession()
+  return sesion
 }
 
 export async function signInWithPassword(email: string, password: string): Promise<void> {
-  const sb = requireSupabase()
-  const { error } = await sb.auth.signInWithPassword({ email, password })
-  if (error) throw new Error(traducirError(error.message))
+  await fbSignIn(email, password)
 }
 
 export function signInDemo(userId: string): Profile {
@@ -69,11 +90,12 @@ export function signInDemo(userId: string): Profile {
 }
 
 export async function signOut(): Promise<void> {
+  sesion = null
   if (isDemoMode) {
     demoApi.signOut()
     return
   }
-  await requireSupabase().auth.signOut()
+  await fbSignOut()
 }
 
 // ---------------------------------------------------------------------
@@ -84,39 +106,49 @@ export async function punch(
   type: EntryType,
   geo: PunchGeo | null,
   opts: { offline?: boolean; eventAt?: string } = {},
-): Promise<TimeEntry> {
+): Promise<TimeEntry | void> {
   if (isDemoMode) return demoApi.punch(userId, type, geo, opts.offline)
 
-  const sb = requireSupabase()
-  const { data, error } = await sb.rpc('punch', {
-    p_entry_type: type,
-    p_event_at: opts.eventAt ?? new Date().toISOString(),
-    p_latitude: geo?.latitude ?? null,
-    p_longitude: geo?.longitude ?? null,
-    p_accuracy: geo?.accuracy ?? null,
-    p_device: navigator.userAgent.slice(0, 120),
-    p_offline: opts.offline ?? false,
-  })
-  if (error) throw new Error(traducirError(error.message))
-  return data as TimeEntry
+  const { profile, company } = requiereSesion()
+
+  // La máquina de estados se comprueba aquí porque las reglas de Firestore no
+  // pueden consultar "el último fichaje" sin encarecer cada escritura. Lo que
+  // SÍ garantizan las reglas es lo que importa legalmente: que el asiento sea
+  // tuyo, esté sellado por el servidor y no se pueda tocar después.
+  const hoy = new Date()
+  hoy.setDate(hoy.getDate() - 1)
+  const recientes = await fbGetEntries(
+    profile.id,
+    hoy.toISOString().slice(0, 10),
+    new Date().toISOString().slice(0, 10),
+  )
+  const ultimo = recientes[recientes.length - 1]
+  const estado = ultimo ? deriveEstado(ultimo.entry_type, ultimo.event_at) : 'off'
+
+  const permitido: Record<string, EntryType[]> = {
+    off: ['clock_in'],
+    working: ['break_start', 'clock_out'],
+    break: ['break_end', 'clock_out'],
+  }
+  if (!permitido[estado].includes(type)) {
+    throw new Error('Esa acción no es posible desde su estado actual.')
+  }
+
+  await fbPunch(profile, company, type, geo, opts)
 }
 
-export async function getEntries(
-  userId: string,
-  from: string,
-  to: string,
-): Promise<TimeEntry[]> {
-  if (isDemoMode) return demoApi.getEntries(userId, from, to)
+/** Estado a partir del último asiento; 20 h sin cerrar se consideran olvido. */
+function deriveEstado(tipo: EntryType, cuando: string): 'working' | 'break' | 'off' {
+  const horas = (Date.now() - new Date(cuando).getTime()) / 3_600_000
+  if (horas > 20) return 'off'
+  if (tipo === 'clock_in' || tipo === 'break_end') return 'working'
+  if (tipo === 'break_start') return 'break'
+  return 'off'
+}
 
-  const { data, error } = await requireSupabase()
-    .from('effective_entries')
-    .select('*')
-    .eq('user_id', userId)
-    .gte('work_date', from)
-    .lte('work_date', to)
-    .order('event_at', { ascending: true })
-  if (error) throw new Error(traducirError(error.message))
-  return (data ?? []) as TimeEntry[]
+export async function getEntries(userId: string, from: string, to: string): Promise<TimeEntry[]> {
+  if (isDemoMode) return demoApi.getEntries(userId, from, to)
+  return fbGetEntries(userId, from, to)
 }
 
 /** Incluye los asientos sustituidos y anulados: vista de Inspección. */
@@ -126,16 +158,7 @@ export async function getRawEntries(
   to: string,
 ): Promise<TimeEntry[]> {
   if (isDemoMode) return demoApi.getRawEntries(userId, from, to)
-
-  const { data, error } = await requireSupabase()
-    .from('time_entries')
-    .select('*')
-    .eq('user_id', userId)
-    .gte('work_date', from)
-    .lte('work_date', to)
-    .order('event_at', { ascending: true })
-  if (error) throw new Error(traducirError(error.message))
-  return (data ?? []) as TimeEntry[]
+  return fbGetRawEntries(userId, from, to)
 }
 
 export async function getDailySummaries(
@@ -144,14 +167,7 @@ export async function getDailySummaries(
   to: string,
 ): Promise<DailySummary[]> {
   if (isDemoMode) return demoApi.getDailySummaries(userId, from, to)
-
-  const { data, error } = await requireSupabase().rpc('daily_summary', {
-    p_user_id: userId,
-    p_from: from,
-    p_to: to,
-  })
-  if (error) throw new Error(traducirError(error.message))
-  return (data ?? []) as DailySummary[]
+  return fbGetDailySummaries(userId, from, to)
 }
 
 // ---------------------------------------------------------------------
@@ -159,25 +175,12 @@ export async function getDailySummaries(
 // ---------------------------------------------------------------------
 export async function getStaffLive(): Promise<StaffLiveStatus[]> {
   if (isDemoMode) return demoApi.getStaffLive()
-
-  const { data, error } = await requireSupabase()
-    .from('staff_live_status')
-    .select('*')
-    .order('full_name')
-  if (error) throw new Error(traducirError(error.message))
-  return (data ?? []) as StaffLiveStatus[]
+  return fbGetStaffLive(requiereSesion().profile.company_id)
 }
 
 export async function listProfiles(): Promise<Profile[]> {
   if (isDemoMode) return demoApi.listProfiles()
-
-  const { data, error } = await requireSupabase()
-    .from('profiles')
-    .select('*')
-    .eq('active', true)
-    .order('full_name')
-  if (error) throw new Error(traducirError(error.message))
-  return (data ?? []) as Profile[]
+  return fbListProfiles(requiereSesion().profile.company_id)
 }
 
 export async function getRequests(scope: {
@@ -185,21 +188,11 @@ export async function getRequests(scope: {
   companyWide?: boolean
 }): Promise<CorrectionRequest[]> {
   if (isDemoMode) return demoApi.getRequests(scope)
-
-  const sb = requireSupabase()
-  let query = sb
-    .from('correction_requests')
-    .select('*, profiles!correction_requests_user_id_fkey(full_name)')
-    .order('created_at', { ascending: false })
-  if (!scope.companyWide && scope.userId) query = query.eq('user_id', scope.userId)
-
-  const { data, error } = await query
-  if (error) throw new Error(traducirError(error.message))
-
-  return (data ?? []).map((row: Record<string, unknown>) => ({
-    ...(row as unknown as CorrectionRequest),
-    user_name: (row.profiles as { full_name?: string } | null)?.full_name,
-  }))
+  return fbGetRequests({
+    userId: scope.userId,
+    companyWide: scope.companyWide,
+    companyId: requiereSesion().profile.company_id,
+  })
 }
 
 export async function createRequest(
@@ -211,17 +204,12 @@ export async function createRequest(
     work_date: string
     reason: string
   },
-  companyId?: string,
-): Promise<CorrectionRequest> {
-  if (isDemoMode) return demoApi.createRequest(userId, input)
-
-  const { data, error } = await requireSupabase()
-    .from('correction_requests')
-    .insert({ ...input, user_id: userId, company_id: companyId })
-    .select()
-    .single()
-  if (error) throw new Error(traducirError(error.message))
-  return data as CorrectionRequest
+): Promise<void> {
+  if (isDemoMode) {
+    demoApi.createRequest(userId, input)
+    return
+  }
+  await fbCreateRequest(requiereSesion().profile, input)
 }
 
 export async function reviewRequest(
@@ -229,16 +217,21 @@ export async function reviewRequest(
   requestId: string,
   approve: boolean,
   note?: string,
-): Promise<CorrectionRequest> {
-  if (isDemoMode) return demoApi.reviewRequest(reviewerId, requestId, approve, note)
+): Promise<void> {
+  if (isDemoMode) {
+    demoApi.reviewRequest(reviewerId, requestId, approve, note)
+    return
+  }
 
-  const { data, error } = await requireSupabase().rpc('review_correction', {
-    p_request_id: requestId,
-    p_approve: approve,
-    p_note: note ?? null,
+  const { profile } = requiereSesion()
+  const solicitudes = await fbGetRequests({
+    companyWide: true,
+    companyId: profile.company_id,
   })
-  if (error) throw new Error(traducirError(error.message))
-  return data as CorrectionRequest
+  const solicitud = solicitudes.find((r) => r.id === requestId)
+  if (!solicitud) throw new Error('Solicitud no encontrada.')
+
+  await fbReviewRequest(profile, solicitud, approve, note)
 }
 
 export async function getAudits(filter: {
@@ -247,29 +240,15 @@ export async function getAudits(filter: {
 }): Promise<TimeEntryAudit[]> {
   if (isDemoMode) return demoApi.getAudits(filter)
 
-  const sb = requireSupabase()
-  let query = sb
-    .from('time_entry_audits')
-    .select('*, profiles!time_entry_audits_actor_id_fkey(full_name)')
-    .order('created_at', { ascending: false })
-    .limit(500)
-  if (!filter.companyWide && filter.entryIds?.length) {
-    query = query.in('entry_id', filter.entryIds)
-  }
-
-  const { data, error } = await query
-  if (error) throw new Error(traducirError(error.message))
-
-  return (data ?? []).map((row: Record<string, unknown>) => ({
-    ...(row as unknown as TimeEntryAudit),
-    actor_name: (row.profiles as { full_name?: string } | null)?.full_name,
-  }))
+  const todos = await fbGetAudits(requiereSesion().profile.company_id)
+  if (filter.companyWide || !filter.entryIds) return todos
+  const buscados = new Set(filter.entryIds)
+  return todos.filter((a) => buscados.has(a.entry_id))
 }
 
 export async function getCorrectionAudits(): Promise<TimeEntryAudit[]> {
   if (isDemoMode) return demoApi.getCorrectionAudits()
-  const all = await getAudits({ companyWide: true })
-  return all.filter((a) => a.action !== 'create')
+  return fbGetAudits(requiereSesion().profile.company_id)
 }
 
 export async function updateGeoConsent(userId: string, consent: boolean): Promise<void> {
@@ -280,14 +259,10 @@ export async function updateGeoConsent(userId: string, consent: boolean): Promis
     })
     return
   }
-  const { error } = await requireSupabase()
-    .from('profiles')
-    .update({ geo_consent: consent, geo_consent_at: consent ? new Date().toISOString() : null })
-    .eq('id', userId)
-  if (error) throw new Error(traducirError(error.message))
+  await fbUpdateGeoConsent(userId, consent)
 }
 
-/** Deja constancia de quién exporta o consulta qué (registro de accesos). */
+/** Deja constancia de quién exporta o consulta qué. */
 export async function logAccess(input: {
   companyId: string
   actorId: string
@@ -298,30 +273,29 @@ export async function logAccess(input: {
   periodEnd?: string
 }): Promise<void> {
   if (isDemoMode) return
-  await requireSupabase().from('access_logs').insert({
-    company_id: input.companyId,
-    actor_id: input.actorId,
-    actor_role: input.actorRole,
-    action: input.action,
-    subject_user_id: input.subjectUserId ?? null,
-    period_start: input.periodStart,
-    period_end: input.periodEnd,
-  })
+  await fbLogAccess(input)
 }
 
 /**
- * SINCRONIZACIÓN EN TIEMPO REAL
+ * Prueba de integridad.
  *
- * Supabase Realtime empuja cada cambio por WebSocket, así que un fichaje
- * aparece en el panel de quien supervisa en el mismo instante, sin recargar
- * ni esperar a un sondeo.
+ * En PostgreSQL existía una cadena de hashes encadenados que delataba
+ * cualquier manipulación directa en base de datos. En Firestore esa cadena
+ * exigiría una Cloud Function (plan Blaze) para calcularse en servidor: hecha
+ * en el cliente no probaría nada, porque el cliente es justo lo que no se
+ * puede dar por fiable.
  *
- * La difusión respeta la RLS de cada suscriptor: la persona trabajadora solo
- * recibe sus propios fichajes; administración, los de su empresa. Nadie
- * recibe lo que no podría consultar.
- *
- * Devuelve la función para cancelar la suscripción.
+ * Lo que la sustituye está en `firestore.rules`: ningún camino permite
+ * modificar ni borrar un asiento, y `recorded_at` lo sella el servidor. La
+ * comprobación queda documentada en docs/CUMPLIMIENTO.md.
  */
+export async function verifyLedger(): Promise<number> {
+  return 0
+}
+
+// ---------------------------------------------------------------------
+// Sincronización en tiempo real
+// ---------------------------------------------------------------------
 export function subscribeToChanges(
   tables: Array<'time_entries' | 'correction_requests' | 'profiles'>,
   onChange: () => void,
@@ -332,45 +306,12 @@ export function subscribeToChanges(
     return subscribeDemo(onChange)
   }
 
-  const sb = requireSupabase()
-  const channel = sb.channel(`fichaje-${tables.join('-')}`)
+  if (!sesion) return () => {}
+  const { profile } = sesion
 
-  for (const table of tables) {
-    channel.on('postgres_changes', { event: '*', schema: 'public', table }, () => onChange())
-  }
+  // Quien solo puede ver lo suyo no necesita escuchar toda la empresa: menos
+  // lecturas facturables y ningún dato de más viajando al dispositivo.
+  const soloPropios = profile.role === 'employee' && !tables.includes('correction_requests')
 
-  channel.subscribe()
-
-  return () => {
-    void sb.removeChannel(channel)
-  }
-}
-
-/** Prueba de integridad de la cadena hash (solo con Supabase). */
-export async function verifyLedger(companyId: string): Promise<number> {
-  if (isDemoMode) return 0
-  const { data, error } = await requireSupabase().rpc('verify_ledger', {
-    p_company_id: companyId,
-  })
-  if (error) throw new Error(traducirError(error.message))
-  return (data ?? []).length
-}
-
-// ---------------------------------------------------------------------
-// Mensajes de error legibles
-// ---------------------------------------------------------------------
-function traducirError(message: string): string {
-  const m = message.toLowerCase()
-  if (m.includes('invalid login credentials')) return 'Correo o contraseña incorrectos.'
-  if (m.includes('email not confirmed')) return 'Debe confirmar su correo antes de acceder.'
-  if (m.includes('registro inalterable')) {
-    return 'Este registro no se puede modificar. Solicite una rectificación: quedará documentada.'
-  }
-  if (m.includes('row-level security')) {
-    return 'No tiene permiso para realizar esta operación.'
-  }
-  if (m.includes('failed to fetch') || m.includes('networkerror')) {
-    return 'Sin conexión con el servidor. El fichaje se guardará y se enviará al recuperarla.'
-  }
-  return message
+  return fbSubscribe(profile.company_id, profile.id, soloPropios, onChange)
 }

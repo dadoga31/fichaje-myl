@@ -8,7 +8,7 @@ import {
   type ReactNode,
 } from 'react'
 import { getSession, signInDemo, signInWithPassword, signOut, type SessionUser } from '../lib/api'
-import { isDemoMode } from '../lib/supabase'
+import { isDemoMode } from '../lib/firebase'
 
 interface SessionContextValue {
   session: SessionUser | null

@@ -15,15 +15,16 @@ Cuando alguien se equivoca, no se sobrescribe nada — se añade un asiento nuev
 que sustituye al anterior, y ambos quedan almacenados con el motivo, el autor y
 el momento de la rectificación.
 
-Tres barreras independientes lo garantizan, y las tres están probadas:
+Lo garantizan las **Security Rules de Firestore**, que se evalúan en el
+servidor de Google y no se pueden esquivar desde el cliente:
 
-1. **Permisos** — `UPDATE`, `DELETE` y `TRUNCATE` revocados; sin política RLS,
-   PostgreSQL deniega.
-2. **Triggers** — bloqueo incondicional que alcanza también al propietario de
-   la tabla y a `service_role`.
-3. **Cadena hash SHA-256** — cada asiento sella el anterior. Manipular la base
-   de datos por fuera de la aplicación rompe la cadena, y `verify_ledger()` lo
-   detecta.
+1. **No existe ninguna regla `update` ni `delete`** sobre `time_entries`. No es
+   que esté prohibido modificar un fichaje: es que la operación no existe. Sin
+   regla, Firestore deniega.
+2. **La hora de grabación la sella el servidor** (`request.time`), no el
+   dispositivo: un móvil con la hora cambiada no puede antedatar nada.
+3. **Aislamiento por empresa y por persona**, con rol de Inspección de solo
+   lectura.
 
 Detalle completo en [`docs/CUMPLIMIENTO.md`](docs/CUMPLIMIENTO.md).
 
@@ -33,7 +34,7 @@ Detalle completo en [`docs/CUMPLIMIENTO.md`](docs/CUMPLIMIENTO.md).
 
 ```bash
 npm install
-cp .env.example .env.local     # y rellene URL y anon key
+cp .env.example .env.local     # y rellene la configuración de Firebase
 npm run dev                    # http://localhost:5173
 ```
 
@@ -50,40 +51,39 @@ npm run dev:demo
 
 ### Despliegue en producción
 
-Guía completa en **[`docs/DESPLIEGUE.md`](docs/DESPLIEGUE.md)**: crear el
-proyecto de Supabase, aplicar las migraciones, dar de alta la empresa y a las
-personas reales, y conectar Vercel.
+Guía completa en **[`docs/DESPLIEGUE.md`](docs/DESPLIEGUE.md)**: preparar
+Firestore y Auth, desplegar las reglas, dar de alta la empresa y a las personas
+reales, y conectar Vercel.
 
-### Migraciones
+### Reglas de seguridad
 
-Se aplican en orden desde el editor SQL de Supabase:
-
-```
-supabase/migrations/0001_schema.sql            Tablas y tipos
-supabase/migrations/0002_immutability.sql      Inalterabilidad, sellado, auditoría
-supabase/migrations/0003_rls.sql               Row Level Security
-supabase/migrations/0004_operations.sql        RPC transaccionales y vistas
-supabase/migrations/0005_realtime_y_altas.sql  Tiempo real y alta de personas
-```
-
-Las personas se dan de alta desde un CSV; el perfil se crea solo:
+`firestore.rules` es **la garantía legal** de esta aplicación. Se despliega
+aparte del frontend:
 
 ```bash
-export SUPABASE_URL=https://xxxxx.supabase.co
-export SUPABASE_SERVICE_KEY=eyJ...                   # clave service_role
+npx firebase deploy --only firestore:rules,firestore:indexes
+```
+
+### Alta de la empresa y las personas
+
+```bash
+export GOOGLE_APPLICATION_CREDENTIALS=/ruta/clave-privada.json
+
+node scripts/alta-personas.mjs --empresa "Mi Empresa SL" --cif B12345678
 node scripts/alta-personas.mjs plantilla.csv --dry-run
 node scripts/alta-personas.mjs plantilla.csv
 ```
 
 ### Pruebas de cumplimiento
 
-Se ejecutan contra cualquier PostgreSQL local, sin necesidad de Supabase:
-
 ```bash
-./supabase/test/run-tests.sh
+npm run test:rules
 ```
 
-40 aserciones que intentan romper activamente cada garantía legal.
+38 aserciones contra el emulador real de Firestore, cada una intentando
+saltarse activamente una barrera legal: modificar un fichaje como
+administración, antedatarlo, leer datos de otra empresa, aprobarse la propia
+rectificación, ascenderse a administrador…
 
 ---
 
@@ -100,7 +100,7 @@ Trabajo del día a día:
 git checkout dev
 # … cambios …
 npm run build            # typecheck + build deben pasar
-./supabase/test/run-tests.sh   # si se ha tocado SQL
+npm run test:rules       # si se han tocado las reglas de seguridad
 git commit -am "…" && git push
 ```
 
@@ -144,8 +144,8 @@ de los cuatro ojos, registro de auditoría e informes mensuales individuales o
 colectivos en PDF normalizado y Excel.
 
 **Inspección**
-Libro completo incluidos los asientos sustituidos, certificado de integridad de
-la cadena hash y exportación inmediata.
+Libro completo incluidos los asientos sustituidos junto a las rectificaciones
+que los reemplazaron, con su motivo y su autor, y exportación inmediata.
 
 ---
 
@@ -154,10 +154,12 @@ la cadena hash y exportación inmediata.
 ```
 src/
 ├── lib/
-│   ├── api.ts           Capa de datos: despacha a Supabase o al backend demo
+│   ├── api.ts           Capa de datos: despacha a Firestore o al backend demo
+│   ├── firebase.ts      Inicialización y detección de configuración
+│   ├── firestore.ts     Adaptador de Firestore
 │   ├── demo.ts          Backend en memoria con las mismas reglas del servidor
 │   ├── offlineQueue.ts  Cola de fichajes sin conexión (IndexedDB)
-│   ├── time.ts          Cómputo de jornada, espejo de daily_summary() en SQL
+│   ├── time.ts          Cómputo de jornada, compartido por cliente y resúmenes
 │   ├── exportPdf.ts     Informe mensual normalizado (jsPDF)
 │   ├── exportExcel.ts   Informe .xlsx nativo
 │   └── zip.ts           Escritor ZIP propio: .xlsx sin dependencias pesadas
@@ -167,7 +169,7 @@ src/
 ```
 
 **Stack:** React 19 · TypeScript · Vite · Tailwind CSS v4 · vite-plugin-pwa ·
-Supabase (PostgreSQL + RLS) · lucide-react.
+Firebase (Firestore + Auth + Security Rules) · lucide-react.
 
 Los generadores de PDF y Excel se cargan bajo demanda: la pantalla de fichaje
 no arrastra medio megabyte de dependencias que casi nadie usa desde el móvil.
@@ -176,11 +178,11 @@ no arrastra medio megabyte de dependencias que casi nadie usa desde el móvil.
 
 ## Sincronización en tiempo real
 
-Cada fichaje llega empujado por el servidor a través de Supabase Realtime: lo
-que una persona ficha aparece en el panel de quien supervisa en el mismo
-instante, sin recargar. La difusión respeta la RLS de cada suscriptor —la
-persona trabajadora solo recibe sus propios fichajes; administración, los de su
-empresa—, así que sincronizar no abre ningún agujero de privacidad.
+Cada fichaje llega empujado por Firestore: lo que una persona ficha aparece en
+el panel de quien supervisa en el mismo instante, sin recargar. La difusión
+respeta las Security Rules de cada suscriptor —la persona trabajadora solo
+recibe sus propios fichajes; administración, los de su empresa—, así que
+sincronizar no abre ningún agujero de privacidad.
 
 Si el WebSocket se cae (un móvil que se duerme, una red inestable), un sondeo
 de 60 segundos recupera el estado sin que nadie tenga que recargar.

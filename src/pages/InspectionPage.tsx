@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
-import { FileDown, Fingerprint, Gavel, ShieldCheck, TriangleAlert } from 'lucide-react'
+import { FileDown, Gavel, ShieldCheck } from 'lucide-react'
 import { useSession } from '../context/SessionContext'
 import { PageHeader } from '../components/Layout'
 import {
@@ -19,7 +19,6 @@ import {
   getRawEntries,
   listProfiles,
   logAccess,
-  verifyLedger,
 } from '../lib/api'
 import { ENTRY_LABEL, type DailySummary, type Profile, type TimeEntry, type TimeEntryAudit } from '../lib/types'
 import { formatDate, formatDuration, formatTime, toISODate } from '../lib/time'
@@ -49,7 +48,6 @@ export function InspectionPage() {
   const [raw, setRaw] = useState<TimeEntry[]>([])
   const [summaries, setSummaries] = useState<DailySummary[]>([])
   const [audits, setAudits] = useState<TimeEntryAudit[]>([])
-  const [integrity, setIntegrity] = useState<number | null>(null)
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
@@ -58,7 +56,6 @@ export function InspectionPage() {
       setPeople(staff)
       if (staff.length > 0) setPersonId(staff[0].id)
       setAudits(await getCorrectionAudits())
-      setIntegrity(await verifyLedger(company.id))
     })()
   }, [company.id])
 
@@ -113,25 +110,20 @@ export function InspectionPage() {
         description="Acceso de solo lectura al registro completo, incluidos los asientos sustituidos por una rectificación. Preparado para su presentación ante la Inspección de Trabajo o la representación legal de la plantilla."
       />
 
-      {/* --- Certificado de integridad ----------------------------------- */}
+      {/* --- Garantía de inalterabilidad ---------------------------------
+          Se afirma SOLO lo que el sistema puede sostener: que no existe
+          ningún camino de escritura que modifique o borre un asiento, y que
+          la hora de grabación la pone el servidor. No se habla de cadenas de
+          verificación que esta base de datos no calcula. */}
       <div className="mb-4">
-        {integrity === 0 ? (
-          <Notice tone="ok" icon={<ShieldCheck size={16} />}>
-            <span className="font-medium">Registro íntegro.</span> La verificación de la
-            cadena de sellos SHA-256 de {company.name} no ha detectado ninguna
-            incoherencia: ningún asiento ha sido alterado desde su creación.
-          </Notice>
-        ) : integrity === null ? (
-          <Notice tone="info" icon={<Fingerprint size={16} />}>
-            Comprobando la integridad de la cadena de sellos…
-          </Notice>
-        ) : (
-          <Notice tone="error" icon={<TriangleAlert size={16} />}>
-            <span className="font-medium">Atención:</span> la verificación ha detectado{' '}
-            {integrity} asiento(s) cuyo sello no concuerda. Debe investigarse un acceso
-            directo a la base de datos.
-          </Notice>
-        )}
+        <Notice tone="ok" icon={<ShieldCheck size={16} />}>
+          <span className="font-medium">Registro inalterable.</span> En {company.name}{' '}
+          ningún perfil —tampoco administración— puede modificar ni borrar un fichaje
+          ya registrado: las reglas de seguridad del servidor no contemplan esa
+          operación. La hora de grabación de cada asiento la sella el servidor, no el
+          dispositivo. Las rectificaciones aparecen abajo, junto al asiento original
+          que sustituyen.
+        </Notice>
       </div>
 
       {/* --- Selector de sujeto y periodo -------------------------------- */}

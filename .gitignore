@@ -8,3 +8,9 @@ dev-dist/
 .vscode/
 coverage/
 dist-demo/
+
+# Firebase
+.firebase/
+firebase-debug.log
+firestore-debug.log
+*-firebase-adminsdk-*.json

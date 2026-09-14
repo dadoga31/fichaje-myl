@@ -1,0 +1,224 @@
+rules_version = '2';
+
+// =====================================================================
+//  FICHAJE MyL — Security Rules
+//
+//  En PostgreSQL la inalterabilidad la garantizaban los permisos, los
+//  triggers y la RLS. En Firestore TODO eso recae aquí: estas reglas se
+//  evalúan en el servidor de Google y no hay forma de esquivarlas desde
+//  el cliente, ni con la consola del navegador ni con un SDK modificado.
+//
+//  Principio: el libro de fichajes es de SOLO AÑADIR. Ningún camino
+//  permite update ni delete sobre time_entries. Rectificar es crear un
+//  documento nuevo que apunta al anterior.
+// =====================================================================
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ---------------------------------------------------------------
+    // Utilidades
+    // ---------------------------------------------------------------
+    function sesionIniciada() {
+      return request.auth != null;
+    }
+
+    function perfil() {
+      return get(/databases/$(database)/documents/profiles/$(request.auth.uid)).data;
+    }
+
+    function perfilExiste() {
+      return exists(/databases/$(database)/documents/profiles/$(request.auth.uid));
+    }
+
+    function miEmpresa() {
+      return perfil().company_id;
+    }
+
+    function miRol() {
+      return perfil().role;
+    }
+
+    function estoyActivo() {
+      return perfil().active == true;
+    }
+
+    function esAdmin() {
+      return miRol() == 'admin';
+    }
+
+    function esResponsable() {
+      return miRol() in ['admin', 'manager'];
+    }
+
+    // La Inspección de Trabajo y la RLT solo miran: no escriben nunca.
+    function esSoloLectura() {
+      return miRol() == 'inspector';
+    }
+
+    function deMiEmpresa(datos) {
+      return datos.company_id == miEmpresa();
+    }
+
+    // El sello de grabación lo pone el SERVIDOR, no el dispositivo: es lo
+    // que impide antedatar un fichaje desde un móvil con la hora cambiada.
+    function selladoPorElServidor(datos) {
+      return datos.recorded_at == request.time;
+    }
+
+    // Tolerancia del momento declarado: hasta 5 min de adelanto (reloj del
+    // móvil) y 26 h de retraso (fichaje sin cobertura, sincronizado luego).
+    function momentoRazonable(datos) {
+      return datos.event_at is timestamp
+        && datos.event_at <= request.time + duration.value(5, 'm')
+        && datos.event_at >= request.time - duration.value(26, 'h');
+    }
+
+    function tipoValido(datos) {
+      return datos.entry_type in ['clock_in', 'break_start', 'break_end', 'clock_out'];
+    }
+
+    // ---------------------------------------------------------------
+    // companies — la configura administración; la lee su plantilla
+    // ---------------------------------------------------------------
+    match /companies/{companyId} {
+      allow read: if sesionIniciada() && perfilExiste() && companyId == miEmpresa();
+      allow update: if sesionIniciada() && perfilExiste() && esAdmin()
+                    && companyId == miEmpresa()
+                    // La conservación legal no se puede bajar de 4 años.
+                    && request.resource.data.retention_years >= 4
+                    // Activar geolocalización exige publicar el aviso previo.
+                    && (request.resource.data.geolocation_policy == 'disabled'
+                        || request.resource.data.geolocation_notice.size() > 20);
+      allow create, delete: if false; // se dan de alta fuera de la aplicación
+    }
+
+    // ---------------------------------------------------------------
+    // profiles — cada persona ve el suyo; administración, los de su empresa
+    // ---------------------------------------------------------------
+    match /profiles/{userId} {
+      allow get: if sesionIniciada()
+                 && (userId == request.auth.uid
+                     || (perfilExiste() && deMiEmpresa(resource.data)
+                         && miRol() in ['admin', 'manager', 'inspector']));
+
+      allow list: if sesionIniciada() && perfilExiste()
+                  && miRol() in ['admin', 'manager', 'inspector'];
+
+      // Auto-edición acotada: el consentimiento de geolocalización y poco más.
+      // Nadie puede ascenderse a sí mismo ni cambiarse de empresa.
+      allow update: if sesionIniciada() && perfilExiste()
+                    && userId == request.auth.uid
+                    && request.resource.data.diff(resource.data).affectedKeys()
+                         .hasOnly(['geo_consent', 'geo_consent_at'])
+                    || (sesionIniciada() && perfilExiste() && esAdmin()
+                        && deMiEmpresa(resource.data)
+                        && deMiEmpresa(request.resource.data));
+
+      // Las altas las crea el Admin SDK (script de alta), nunca el cliente.
+      allow create, delete: if false;
+    }
+
+    // ---------------------------------------------------------------
+    // time_entries — EL LIBRO DE FICHAJES
+    //
+    //  Aquí está el corazón del Art. 34.9 ET: no existe ninguna regla de
+    //  update ni de delete. Sin regla, Firestore DENIEGA. Ni la persona
+    //  trabajadora, ni administración, ni nadie con la consola abierta
+    //  puede alterar un asiento ya escrito.
+    // ---------------------------------------------------------------
+    match /time_entries/{entryId} {
+      allow get, list: if sesionIniciada() && perfilExiste()
+                       && (resource.data.user_id == request.auth.uid
+                           || (deMiEmpresa(resource.data)
+                               && miRol() in ['admin', 'manager', 'inspector']));
+
+      // Fichaje propio, en tiempo real o diferido.
+      allow create: if sesionIniciada() && perfilExiste() && estoyActivo()
+                    && !esSoloLectura()
+                    && request.resource.data.user_id == request.auth.uid
+                    && request.resource.data.created_by == request.auth.uid
+                    && deMiEmpresa(request.resource.data)
+                    && tipoValido(request.resource.data)
+                    && momentoRazonable(request.resource.data)
+                    && selladoPorElServidor(request.resource.data)
+                    && request.resource.data.origin in ['employee_app', 'employee_offline']
+                    && request.resource.data.supersedes_id == null
+                    && request.resource.data.is_annulment == false;
+
+      // Rectificación: solo administración, SIEMPRE con motivo documentado,
+      // y sin poder cambiar de titular ni de empresa.
+      allow create: if sesionIniciada() && perfilExiste() && esResponsable()
+                    && deMiEmpresa(request.resource.data)
+                    && tipoValido(request.resource.data)
+                    && selladoPorElServidor(request.resource.data)
+                    && request.resource.data.created_by == request.auth.uid
+                    && request.resource.data.origin in ['correction', 'admin_manual']
+                    && request.resource.data.reason is string
+                    && request.resource.data.reason.size() >= 10
+                    && (request.resource.data.supersedes_id == null
+                        || (get(/databases/$(database)/documents/time_entries/$(request.resource.data.supersedes_id)).data.user_id
+                              == request.resource.data.user_id
+                            && get(/databases/$(database)/documents/time_entries/$(request.resource.data.supersedes_id)).data.company_id
+                              == request.resource.data.company_id));
+
+      // NO hay allow update. NO hay allow delete. Es deliberado y es el
+      // núcleo de la garantía legal: sin regla, Firestore deniega.
+    }
+
+    // ---------------------------------------------------------------
+    // correction_requests — solicitudes de rectificación
+    // ---------------------------------------------------------------
+    match /correction_requests/{requestId} {
+      allow get, list: if sesionIniciada() && perfilExiste()
+                       && (resource.data.user_id == request.auth.uid
+                           || (deMiEmpresa(resource.data) && esResponsable()));
+
+      allow create: if sesionIniciada() && perfilExiste() && !esSoloLectura()
+                    && request.resource.data.user_id == request.auth.uid
+                    && deMiEmpresa(request.resource.data)
+                    && request.resource.data.status == 'pending'
+                    && request.resource.data.reason is string
+                    && request.resource.data.reason.size() >= 10;
+
+      // Resolver una solicitud. REGLA DE LOS CUATRO OJOS: quien la firma no
+      // puede ser quien la pidió, ni siquiera con perfil de administración.
+      allow update: if sesionIniciada() && perfilExiste() && esResponsable()
+                    && deMiEmpresa(resource.data)
+                    && resource.data.status == 'pending'
+                    && resource.data.user_id != request.auth.uid
+                    && request.resource.data.status in ['approved', 'rejected']
+                    && request.resource.data.reviewed_by == request.auth.uid
+                    // Lo solicitado no se puede reescribir al resolver.
+                    && request.resource.data.user_id == resource.data.user_id
+                    && request.resource.data.requested_event_at == resource.data.requested_event_at
+                    && request.resource.data.requested_type == resource.data.requested_type
+                    && request.resource.data.reason == resource.data.reason;
+
+      // Retirar la propia solicitud mientras siga pendiente.
+      allow update: if sesionIniciada() && perfilExiste()
+                    && resource.data.user_id == request.auth.uid
+                    && resource.data.status == 'pending'
+                    && request.resource.data.status == 'cancelled';
+
+      allow delete: if false;
+    }
+
+    // ---------------------------------------------------------------
+    // access_logs — quién consulta y exporta qué. Solo se añade.
+    // ---------------------------------------------------------------
+    match /access_logs/{logId} {
+      allow create: if sesionIniciada() && perfilExiste()
+                    && request.resource.data.actor_id == request.auth.uid
+                    && deMiEmpresa(request.resource.data);
+      allow get, list: if sesionIniciada() && perfilExiste() && esAdmin()
+                       && deMiEmpresa(resource.data);
+      allow update, delete: if false;
+    }
+
+    // Todo lo que no esté contemplado arriba queda denegado.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -31,7 +31,6 @@ const STATUS_META: Record<
 export function CorrectionsPage() {
   const { session } = useSession()
   const profile = session!.profile
-  const company = session!.company
 
   const [requests, setRequests] = useState<CorrectionRequest[]>([])
   const [recent, setRecent] = useState<TimeEntry[]>([])
@@ -103,7 +102,6 @@ export function CorrectionsPage() {
           work_date: date,
           reason: reason.trim(),
         },
-        company.id,
       )
 
       setReason('')

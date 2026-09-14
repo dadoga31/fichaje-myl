@@ -40,12 +40,16 @@ export function SetupPage() {
           <div className="px-5 py-5">
             <p className="flex items-center gap-2 text-[13px] font-medium text-slate-900">
               <Database size={15} className="text-slate-400" />
-              Defina estas dos variables de entorno y vuelva a desplegar
+              Defina estas variables de entorno y vuelva a desplegar
             </p>
 
             <pre className="mt-3 overflow-x-auto rounded-[4px] border border-slate-200 bg-slate-50 px-3 py-2.5 font-mono text-[12px] leading-relaxed text-slate-700">
-{`VITE_SUPABASE_URL=https://xxxxx.supabase.co
-VITE_SUPABASE_ANON_KEY=eyJhbGciOi...`}
+{`VITE_FIREBASE_API_KEY=AIza...
+VITE_FIREBASE_AUTH_DOMAIN=su-proyecto.firebaseapp.com
+VITE_FIREBASE_PROJECT_ID=su-proyecto
+VITE_FIREBASE_STORAGE_BUCKET=su-proyecto.firebasestorage.app
+VITE_FIREBASE_MESSAGING_SENDER_ID=000000000000
+VITE_FIREBASE_APP_ID=1:000000000000:web:xxxx`}
             </pre>
 
             <p className="mt-3 text-[12px] leading-relaxed text-slate-600">
