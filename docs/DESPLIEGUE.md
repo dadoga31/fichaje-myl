@@ -101,10 +101,30 @@ Esta configuración **es pública por diseño**: viaja en el JavaScript que
 descarga cualquier visitante y solo identifica al proyecto. No es una
 contraseña. Quien protege los datos son las reglas del paso 2.
 
+Por eso mismo, su **visibilidad en Vercel debe ser «Config», no «Secret»**. El
+prefijo `VITE_` es público por definición y Vercel rechaza marcarlo como
+secreto: marcarlo no lo ocultaría, solo le haría creer que lo está.
+
 **Nunca ponga en Vercel la clave de cuenta de servicio.**
 
-Después, **Deployments → Redeploy**. Vercel no recoge variables nuevas sin un
-build nuevo: es el paso que más veces se olvida.
+Después, **Deployments → Redeploy**, y desmarque *Use existing Build Cache*.
+Vercel no recoge variables nuevas sin un build nuevo, porque Vite las incrusta
+en el JavaScript durante la compilación. Es el paso que más veces se olvida.
+
+### Si el despliegue falla diciendo que falta la configuración
+
+Es deliberado. `scripts/verificar-entorno.mjs` se ejecuta antes de compilar y
+**rompe el build** si no encuentra las seis variables, en lugar de publicar una
+aplicación que no puede conectarse a nada. El registro de una empresa en la que
+nadie puede fichar es peor que un despliegue en rojo.
+
+El propio error enumera cuáles faltan y **qué variables `VITE_*` ha visto el
+build**, que es lo que distingue «no las he guardado» de «las he escrito mal».
+También detecta espacios sobrantes al copiar el valor, que no se ven en el
+formulario y rompen igual que si faltara.
+
+Repasos habituales: que estén en **este** proyecto de Vercel y no en otro de la
+misma cuenta, y que estén marcadas para **Production** y no solo para Preview.
 
 ## 5. Autorizar el dominio
 
