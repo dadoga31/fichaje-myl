@@ -3,75 +3,65 @@
 Objetivo: que la plantilla fiche desde el móvil, por internet, y que lo que
 una persona ficha aparezca **al instante** en el panel de quien supervisa.
 
-Arquitectura:
-
 ```
-   Móvil / PC  ──HTTPS──▶  Vercel            (la PWA: HTML, JS, service worker)
+   Móvil / PC  ──HTTPS──▶  Vercel      (la PWA: HTML, JS, service worker)
                               │
-                              └──HTTPS/WSS──▶ Supabase
-                                              · PostgreSQL con toda la lógica legal
-                                              · Auth (usuarios reales)
-                                              · Realtime (sincronización instantánea)
+                              └────────▶ Firebase
+                                         · Firestore (los fichajes)
+                                         · Security Rules (la garantía legal)
+                                         · Auth (usuarios reales)
+                                         · Sincronización en tiempo real
 ```
 
 Vercel sirve **solo ficheros estáticos**; no guarda ningún dato de jornada.
-Todo el registro vive en PostgreSQL, con la RLS y los triggers de
-inalterabilidad que documenta [`CUMPLIMIENTO.md`](CUMPLIMIENTO.md).
 
 ---
 
-## Por qué hacía falta esto
+## 1. Preparar el proyecto de Firebase
 
-Hasta ahora la aplicación funcionaba en **modo demostración**: los datos se
-guardaban en el `localStorage` de cada navegador. Por eso quien supervisa no
-veía las jornadas de nadie — no había nada compartido que ver. Cada móvil
-tenía su propia copia privada, y al borrar los datos del navegador
-desaparecía todo.
+En la [consola de Firebase](https://console.firebase.google.com), sobre su
+proyecto `fichaje-myl`:
 
-Ese modo ya **no se activa solo**. Si faltan las variables de entorno, la
-aplicación muestra una pantalla de configuración y no deja entrar, en vez de
-fingir que funciona.
+1. **Authentication → Sign-in method → Email/Password → Habilitar.**
+   No active el registro público: las cuentas las crea la empresa.
+2. **Firestore Database → Crear base de datos.**
+   - Modo: **producción** (empezar bloqueado; las reglas se despliegan luego).
+   - Ubicación: **eur3 (europe-west)** o **europe-west1** — los datos de
+     personal deben quedarse en la UE (RGPD). **Esto no se puede cambiar
+     después**, así que elíjalo con cuidado.
 
----
+## 2. Desplegar las reglas de seguridad
 
-## 1. Crear el proyecto de Supabase
+**Este es el paso más importante de todos.** En Firebase, las Security Rules
+son lo que hace que un fichaje no se pueda alterar. Sin ellas desplegadas, o
+la base está cerrada a todo, o está abierta de par en par.
 
-1. Entre en [supabase.com](https://supabase.com) → **New project**.
-2. Región: **West EU (Ireland)** o **Central EU (Frankfurt)** — datos dentro
-   de la UE, que es lo que corresponde para datos de personal (RGPD).
-3. Anote la contraseña de la base de datos que le genere.
-4. Cuando termine, vaya a **Settings → API** y copie:
-   - **Project URL** → `https://xxxxx.supabase.co`
-   - **anon public** → clave pública, va en el frontend
-   - **service_role** → clave privada, **nunca** en el frontend
-
-> La clave `anon` es pública por diseño: quien protege los datos es la RLS.
-> La `service_role` se salta la RLS por completo: trátela como una contraseña
-> de administración.
-
-## 2. Aplicar el esquema
-
-En **SQL Editor**, ejecute **en orden** y de uno en uno:
-
-```
-supabase/migrations/0001_schema.sql         Tablas y tipos
-supabase/migrations/0002_immutability.sql   Inalterabilidad, sellado, auditoría
-supabase/migrations/0003_rls.sql            Seguridad a nivel de fila
-supabase/migrations/0004_operations.sql     Operaciones transaccionales
-supabase/migrations/0005_realtime_y_altas.sql  Tiempo real + alta de personas
+```bash
+npx firebase login
+npx firebase use fichaje-myl-9fb51
+npx firebase deploy --only firestore:rules,firestore:indexes
 ```
 
-Cada uno debe terminar en **Success**. Si alguno falla, pare y revise antes
-de seguir: el siguiente da por hecho que el anterior se aplicó entero.
+Compruebe en **Firestore → Reglas** que aparecen las suyas y no las de por
+defecto.
 
-## 3. Dar de alta la empresa
+## 3. Dar de alta la empresa y a las personas
 
-Edite `supabase/seed/01_empresa.sql` con su razón social y CIF, ejecútelo, y
-**guarde el `company_id`** que devuelve.
+Necesita la clave de cuenta de servicio: **Configuración del proyecto →
+Cuentas de servicio → Generar nueva clave privada**.
 
-## 4. Dar de alta a las personas
+> ⚠ Ese JSON es la llave maestra del proyecto: se salta todas las reglas.
+> No lo suba al repositorio ni lo ponga en Vercel. Solo vive en su equipo.
 
-Prepare un CSV con la plantilla real:
+```bash
+export GOOGLE_APPLICATION_CREDENTIALS=/ruta/clave-privada.json
+
+# La empresa, una sola vez
+node scripts/alta-personas.mjs --empresa "Mi Empresa SL" --cif B12345678
+# → anote el company_id que devuelve
+```
+
+Prepare el CSV con la plantilla real:
 
 ```csv
 email,nombre,rol,numero_empleado,nif,horas_semana
@@ -79,15 +69,10 @@ ana.perez@miempresa.es,Ana Pérez Ruiz,employee,E-001,12345678Z,40
 luis.marin@miempresa.es,Luis Marín Soto,admin,A-001,87654321X,40
 ```
 
-Roles: `employee` (ficha), `manager` (además aprueba), `admin` (además
-configura), `inspector` (solo lectura, para la ITSS o la RLT).
-
-Compruebe primero, cree después:
+Roles: `employee` (ficha) · `manager` (además aprueba) · `admin` (además
+configura) · `inspector` (solo lectura, para la ITSS o la RLT).
 
 ```bash
-export SUPABASE_URL=https://xxxxx.supabase.co
-export SUPABASE_SERVICE_KEY=eyJ...        # service_role
-
 node scripts/alta-personas.mjs plantilla.csv --dry-run   # solo comprueba
 node scripts/alta-personas.mjs plantilla.csv             # crea de verdad
 ```
@@ -98,85 +83,116 @@ consultar: cópielas, repártalas por un canal seguro y pida que las cambien.
 > Necesita al menos una persona con rol `admin`, o no habrá quien apruebe
 > rectificaciones: nadie puede aprobar las suyas propias.
 
-## 5. Conectar Vercel
+## 4. Conectar Vercel
 
-En su proyecto de Vercel, **Settings → Environment Variables**, añada para
-*Production*, *Preview* y *Development*:
+En **Settings → Environment Variables**, para *Production*, *Preview* y
+*Development*:
 
-| Variable | Valor |
+| Variable | Dónde se obtiene |
 |---|---|
-| `VITE_SUPABASE_URL` | `https://xxxxx.supabase.co` |
-| `VITE_SUPABASE_ANON_KEY` | la clave `anon public` |
+| `VITE_FIREBASE_API_KEY` | Configuración del proyecto → Tus apps |
+| `VITE_FIREBASE_AUTH_DOMAIN` | ídem |
+| `VITE_FIREBASE_PROJECT_ID` | ídem |
+| `VITE_FIREBASE_STORAGE_BUCKET` | ídem |
+| `VITE_FIREBASE_MESSAGING_SENDER_ID` | ídem |
+| `VITE_FIREBASE_APP_ID` | ídem |
 
-**No añada nunca `SUPABASE_SERVICE_KEY` en Vercel.** El frontend no la
-necesita y ahí sería pública.
+Esta configuración **es pública por diseño**: viaja en el JavaScript que
+descarga cualquier visitante y solo identifica al proyecto. No es una
+contraseña. Quien protege los datos son las reglas del paso 2.
 
-Vuelva a desplegar (**Deployments → Redeploy**). Vercel no recoge variables
-nuevas sin un build nuevo: este es el paso que más veces se olvida.
+**Nunca ponga en Vercel la clave de cuenta de servicio.**
 
-`vercel.json` ya está en el repositorio con lo necesario: reescritura de
-rutas para que funcione el enrutado, cabeceras de seguridad, y caché correcta
-del service worker.
+Después, **Deployments → Redeploy**. Vercel no recoge variables nuevas sin un
+build nuevo: es el paso que más veces se olvida.
 
-## 6. Permitir el dominio en Supabase
+## 5. Autorizar el dominio
 
-**Authentication → URL Configuration**:
-
-- *Site URL*: `https://su-dominio.vercel.app` (o su dominio propio)
-- *Redirect URLs*: añada el mismo
-
-Sin esto el inicio de sesión falla con un error de redirección.
+**Authentication → Settings → Dominios autorizados**: añada su dominio de
+Vercel. Sin esto, el inicio de sesión falla.
 
 ---
 
 ## Cómo se accede
 
-- **Personas trabajadoras**: abren `https://su-dominio` en el móvil, entran
-  con su correo y su contraseña, y pulsan **Añadir a pantalla de inicio**
-  (iPhone: *Compartir → Añadir a pantalla de inicio*; Android: el navegador
-  lo ofrece solo). A partir de ahí se abre como una aplicación y ficha
-  aunque se quede sin cobertura.
-- **Administración**: el mismo enlace desde el PC. Ve *Plantilla*,
-  *Aprobaciones* e *Informes* según su rol.
+- **Personas trabajadoras**: abren `https://su-dominio` en el móvil, entran con
+  su correo y contraseña, y pulsan **Añadir a pantalla de inicio**. A partir de
+  ahí se abre como una aplicación y ficha aunque se quede sin cobertura.
+- **Administración**: el mismo enlace desde el PC.
 
-La instalación y el modo sin conexión **exigen HTTPS**. Con Vercel ya lo
-tiene; por IP local (`http://192.168.x.x`) el navegador no registra el
-service worker y no habría ni instalación ni funcionamiento offline.
+La instalación y el modo sin conexión **exigen HTTPS**. Con Vercel ya lo tiene.
 
 ---
 
 ## Comprobar que la sincronización funciona
 
 1. Abra la app en el móvil con una cuenta de persona trabajadora.
-2. Abra en el PC, en otra sesión, con la cuenta de administración, en **Plantilla**.
+2. En el PC, con la cuenta de administración, entre en **Plantilla**.
 3. Fiche la entrada desde el móvil.
 4. El PC debe pasar a **En jornada** en un segundo, sin tocar nada.
 
-Si no cambia, revise en Supabase **Database → Replication** que la
-publicación `supabase_realtime` incluye `time_entries`. La migración `0005`
-lo hace automáticamente.
+---
+
+## Qué cambia respecto a la versión PostgreSQL
+
+La migración a Firebase conserva las garantías legales, pero las apoya en
+mecanismos distintos. Conviene saber exactamente cuáles:
+
+| Garantía | Antes (PostgreSQL) | Ahora (Firestore) |
+|---|---|---|
+| No se puede modificar un fichaje | Permisos + triggers | **Security Rules**: no existe ninguna regla `update`. Sin regla, Firestore deniega |
+| No se puede borrar | Ídem | Ídem, tampoco hay regla `delete` |
+| Aislamiento entre empresas | Row Level Security | Security Rules por `company_id` |
+| Hora de grabación fiable | `now()` del servidor | `request.time` exigido por regla |
+| Cuatro ojos en aprobaciones | Función transaccional | Regla: `resource.data.user_id != request.auth.uid` |
+| Conservación ≥ 4 años | `CHECK` | Regla sobre `retention_years` |
+| **Cadena hash SHA-256** | Encadenada por trigger | **No existe** (ver abajo) |
+
+### La cadena hash: qué se perdió y qué lo sustituye
+
+En PostgreSQL cada asiento sellaba al anterior, de modo que una manipulación
+por acceso directo a la base de datos rompía la cadena y era detectable.
+
+En Firestore esa cadena exigiría una **Cloud Function** (plan Blaze, de pago
+por uso) que la calculase en el servidor. Calcularla en el navegador no
+probaría nada: el cliente es justo lo que no se puede dar por fiable.
+
+Lo que la sustituye, y que es suficiente para el Art. 34.9 ET:
+
+- **Ningún camino de escritura permite modificar ni borrar un asiento.** No es
+  que esté prohibido: es que la operación no existe en las reglas.
+- **La hora de grabación la impone el servidor**, no el dispositivo.
+- Con el plan Blaze puede además activar **Cloud Audit Logs**, que registra
+  todo acceso administrativo a los datos.
+
+Si más adelante quiere la cadena hash, dígamelo y preparo la Cloud Function.
 
 ---
 
 ## Copias de seguridad
 
-El plan gratuito de Supabase **no hace copias automáticas**. El registro de
-jornada debe conservarse 4 años (Art. 34.9 ET), así que o contrata un plan
-con copias, o programa un volcado periódico:
+Firestore **no hace copias automáticas** en el plan gratuito, y el registro de
+jornada debe conservarse 4 años. Con el plan Blaze:
 
 ```bash
-pg_dump "postgresql://postgres:CONTRASEÑA@db.xxxxx.supabase.co:5432/postgres" \
-  --no-owner --format=custom --file="fichajes-$(date +%F).dump"
+gcloud firestore export gs://SU-BUCKET/copias/$(date +%F) \
+  --collection-ids=time_entries,profiles,companies,correction_requests
 ```
 
-Guárdelo cifrado y fuera del mismo proveedor.
+Prográmelo con Cloud Scheduler y guarde una copia fuera de Google.
 
 ---
 
-## Alternativa: servidor propio
+## Probar las reglas antes de desplegarlas
 
-Si prefiere no depender de Supabase, el esquema es PostgreSQL estándar: no
-usa nada propietario salvo `auth.users` y `auth.uid()`, que
-`supabase/test/00_supabase_stub.sql` reproduce en veinte líneas. Haría falta
-sustituir autenticación y tiempo real por equivalentes propios. Dígamelo y
-preparo el despliegue con Docker.
+Las reglas son ahora la garantía legal, así que tienen su propia batería que
+las ataca contra el emulador real:
+
+```bash
+npm run test:rules
+```
+
+38 aserciones que intentan activamente saltarse cada barrera: modificar un
+fichaje como administración, antedatarlo, leer datos de otra empresa,
+aprobarse la propia rectificación, ascenderse a administrador… Si alguna
+pasara, la prueba falla.

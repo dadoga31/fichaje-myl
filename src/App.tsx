@@ -13,7 +13,7 @@ import { ReportsPage } from './pages/ReportsPage'
 import { InspectionPage } from './pages/InspectionPage'
 import { SettingsPage } from './pages/SettingsPage'
 import { SetupPage } from './pages/SetupPage'
-import { isMisconfigured } from './lib/supabase'
+import { isMisconfigured } from './lib/firebase'
 import type { UserRole } from './lib/types'
 
 /** Ruta restringida por rol. Sin permiso, se devuelve al inicio sin drama. */

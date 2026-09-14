@@ -1,5 +1,5 @@
 /**
- * BACKEND DE DEMOSTRACIÓN (solo cuando no hay Supabase configurado).
+ * BACKEND DE DEMOSTRACIÓN (solo con VITE_DEMO=true).
  *
  * Reproduce en memoria las reglas que en producción impone PostgreSQL:
  * el libro de fichajes es append-only, las rectificaciones generan un asiento
