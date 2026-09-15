@@ -15,13 +15,13 @@ function Digit({ value, size }: { value: string; size: 'hero' | 'compact' }) {
   return (
     <span
       className={cx(
-        'relative inline-block text-center [perspective:400px]',
+        'relative inline-block text-center ',
         size === 'hero' ? 'w-[0.58em]' : 'w-[0.56em]',
       )}
     >
       {/* La `key` cambia con el dígito: React remonta el nodo y la animación
           se dispara sola, sin temporizadores ni estado adicional. */}
-      <span key={value} className="digit-roll inline-block [transform-style:preserve-3d]">
+      <span key={value} className="digit-roll inline-block ">
         {value}
       </span>
     </span>
@@ -53,7 +53,7 @@ export function FlipClock({
   return (
     <span
       className={cx(
-        'font-display font-bold tracking-[-0.04em] tabular-nums',
+        'font-display font-semibold tracking-[-0.03em] tabular-nums',
         muted ? 'text-ink-faint' : 'text-ink',
         className,
       )}

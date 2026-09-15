@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { Building2, Database, MapPin, RotateCcw, ShieldCheck, Smartphone } from 'lucide-react'
 import { useSession } from '../context/SessionContext'
 import { PageHeader } from '../components/Layout'
-import { Badge, Button, MicroLabel, Notice, Panel, PanelHeader, cx } from '../components/ui'
+import { Badge, Button, MicroLabel, Notice, Panel, PanelHeader, Tabs, cx } from '../components/ui'
 import { updateGeoConsent } from '../lib/api'
 import { resetDemo } from '../lib/demo'
 import { ROLE_LABEL } from '../lib/types'
@@ -14,6 +14,7 @@ export function SettingsPage() {
 
   const [busy, setBusy] = useState(false)
   const [installEvent, setInstallEvent] = useState<Event | null>(null)
+  const [tab, setTab] = useState<'cuenta' | 'privacidad' | 'app'>('cuenta')
 
   // La instalación solo puede ofrecerse cuando el navegador lanza el evento;
   // en iOS no existe y se instala desde «Compartir → Añadir a inicio».
@@ -37,13 +38,29 @@ export function SettingsPage() {
   }
 
   return (
-    <>
+    <div className="flex min-h-0 flex-1 flex-col">
       <PageHeader
         title="Ajustes y privacidad"
         description="Su cuenta, la configuración de su empresa y el tratamiento de sus datos de jornada."
       />
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      <Tabs
+        tabs={[
+          { id: 'cuenta' as const, label: 'Cuenta y empresa' },
+          { id: 'privacidad' as const, label: 'Privacidad' },
+          { id: 'app' as const, label: 'Aplicación' },
+        ]}
+        active={tab}
+        onChange={setTab}
+        className="surface mb-2.5 rounded-[10px] border-b-0"
+      />
+
+      <div
+        className={cx(
+          'grid min-h-0 flex-1 content-start gap-3 overflow-y-auto lg:grid-cols-2',
+          tab !== 'cuenta' && 'hidden',
+        )}
+      >
         {/* --- Cuenta ---------------------------------------------------- */}
         <Panel className="h-fit">
           <PanelHeader title="Su cuenta" />
@@ -89,6 +106,14 @@ export function SettingsPage() {
           </div>
         </Panel>
 
+      </div>
+
+      <div
+        className={cx(
+          'grid min-h-0 flex-1 content-start gap-3 overflow-y-auto lg:grid-cols-2',
+          tab !== 'privacidad' && 'hidden',
+        )}
+      >
         {/* --- Geolocalización -------------------------------------------- */}
         <Panel className="h-fit">
           <PanelHeader
@@ -181,8 +206,16 @@ export function SettingsPage() {
           </div>
         </Panel>
 
+      </div>
+
+      <div
+        className={cx(
+          'grid min-h-0 flex-1 content-start gap-3 overflow-y-auto',
+          tab !== 'app' && 'hidden',
+        )}
+      >
         {/* --- Aplicación --------------------------------------------------- */}
-        <Panel className="h-fit lg:col-span-2">
+        <Panel className="h-fit">
           <PanelHeader title="Aplicación" />
           <div className="flex flex-wrap items-center gap-3 px-4 py-4">
             {installEvent && (
@@ -224,12 +257,13 @@ export function SettingsPage() {
               <Notice tone="warn">
                 Está en modo de demostración con datos ficticios almacenados en este
                 navegador. En un despliegue real, la inalterabilidad del registro la
-                garantiza PostgreSQL, no el cliente.
+                garantizan las reglas de seguridad de Firestore, que se evalúan en el
+                servidor: el cliente nunca es la garantía.
               </Notice>
             </div>
           )}
         </Panel>
       </div>
-    </>
+    </div>
   )
 }

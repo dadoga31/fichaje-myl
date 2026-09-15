@@ -111,7 +111,7 @@ export function EmployeeHome() {
   if (fallo) {
     return (
       <div className="flex h-full items-center justify-center px-5">
-        <div className="glass w-full max-w-sm rounded-[16px] px-5 py-5 text-center">
+        <div className="surface w-full max-w-sm rounded-[12px] px-5 py-5 text-center">
           <AlertTriangle size={20} className="mx-auto text-amber-600" />
           <p className="mt-2.5 text-[14px] font-semibold text-ink">
             No se ha podido cargar su jornada

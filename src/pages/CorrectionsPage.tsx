@@ -3,6 +3,8 @@ import { Check, ClipboardCheck, Clock, Lock, X } from 'lucide-react'
 import { useSession } from '../context/SessionContext'
 import { PageHeader } from '../components/Layout'
 import {
+  Tabs,
+  cx,
   Badge,
   Button,
   EmptyState,
@@ -35,6 +37,7 @@ export function CorrectionsPage() {
   const [requests, setRequests] = useState<CorrectionRequest[]>([])
   const [recent, setRecent] = useState<TimeEntry[]>([])
   const [loading, setLoading] = useState(true)
+  const [tab, setTab] = useState<'nueva' | 'mias'>('nueva')
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [done, setDone] = useState(false)
@@ -117,18 +120,35 @@ export function CorrectionsPage() {
   }
 
   return (
-    <>
+    <div className="flex min-h-0 flex-1 flex-col">
       <PageHeader
         title="Solicitudes de corrección"
-        description="Los fichajes no se pueden editar ni borrar. Si hay un error, solicite su rectificación: administración la revisará y quedará registrada con su motivo."
+        description="Los fichajes no se editan: se rectifican dejando constancia."
       />
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,420px)_minmax(0,1fr)]">
+      {/* En móvil, formulario y historial no caben a la vez; en escritorio sí,
+          y ahí las pestañas se ocultan y vuelven las dos columnas. */}
+      <Tabs
+        tabs={[
+          { id: 'nueva' as const, label: 'Nueva solicitud' },
+          { id: 'mias' as const, label: 'Mis solicitudes', count: requests.length },
+        ]}
+        active={tab}
+        onChange={setTab}
+        className="surface mb-2.5 rounded-[10px] border-b-0 lg:hidden"
+      />
+
+      <div className="grid min-h-0 flex-1 gap-3 lg:grid-cols-[minmax(0,400px)_minmax(0,1fr)]">
         {/* --- Formulario ------------------------------------------------ */}
-        <Panel className="h-fit">
+        <Panel
+          className={cx(
+            'flex min-h-0 flex-col overflow-hidden lg:flex',
+            tab !== 'nueva' && 'hidden',
+          )}
+        >
           <PanelHeader title="Nueva solicitud" />
 
-          <form onSubmit={handleSubmit} className="flex flex-col gap-4 px-4 py-4">
+          <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto px-4 py-3">
             <div className="grid grid-cols-2 gap-px overflow-hidden rounded-[4px] border border-slate-200 bg-slate-200">
               {(
                 [
@@ -256,7 +276,12 @@ export function CorrectionsPage() {
         </Panel>
 
         {/* --- Historial de solicitudes ---------------------------------- */}
-        <Panel>
+        <Panel
+          className={cx(
+            'flex min-h-0 flex-col overflow-hidden lg:flex',
+            tab !== 'mias' && 'hidden',
+          )}
+        >
           <PanelHeader title="Mis solicitudes" hint={`${requests.length} en total`} />
 
           {loading ? (
@@ -270,7 +295,7 @@ export function CorrectionsPage() {
               description="Cuando pida una corrección, aparecerá aquí con su estado de aprobación."
             />
           ) : (
-            <ul>
+            <ul className="min-h-0 flex-1 overflow-y-auto">
               {requests.map((request) => {
                 const meta = STATUS_META[request.status]
                 return (
@@ -316,6 +341,6 @@ export function CorrectionsPage() {
           )}
         </Panel>
       </div>
-    </>
+    </div>
   )
 }

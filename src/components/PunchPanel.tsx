@@ -1,28 +1,21 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import {
-  AlertTriangle,
-  CloudOff,
-  Coffee,
-  LogIn,
-  LogOut,
-  MapPin,
-  Play,
-} from 'lucide-react'
+import { AlertTriangle, CloudOff, Coffee, LogIn, LogOut, MapPin, Play } from 'lucide-react'
 import type { EntryType, QueuedPunch, TimeEntry, WorkStatus } from '../lib/types'
 import { ENTRY_LABEL } from '../lib/types'
 import { computeDay, deriveStatus, formatDuration, formatTime } from '../lib/time'
 import { useTicker } from '../hooks/useTicker'
-import { Badge, MicroLabel, StatusPill, cx } from './ui'
-import { HoldButton } from './HoldButton'
+import { MicroLabel, StatusPill, cx } from './ui'
+import { PunchDial, PunchPill } from './PunchDial'
 import { FlipClock } from './FlipClock'
-import { ProgressRing } from './ProgressRing'
 
 /**
  * PANTALLA DE FICHAJE
  *
- * Una pantalla, una tarea. El anillo es el centro de gravedad: dice de un
- * vistazo cuánto llevas de jornada, y su color —igual que la luz del fondo—
- * dice en qué estado estás antes de leer una sola palabra.
+ * Una pantalla, una tarea, sin desplazamiento. Tres bloques de altura fija
+ * —identidad, dato y acción— y un cuarto flexible en medio que absorbe lo que
+ * sobre o falte. Quien ficha lo hace de pie, con prisa y a menudo con una sola
+ * mano: cualquier cosa que obligue a desplazarse antes de poder pulsar es un
+ * fallo de diseño, no un detalle.
  */
 
 interface PunchPanelProps {
@@ -81,10 +74,7 @@ export function PunchPanel({
   const lastEntry = entries.length > 0 ? entries[entries.length - 1] : null
   const status = deriveStatus(lastEntry)
 
-  const { workedSeconds, breakSeconds } = useMemo(
-    () => computeDay(entries, now),
-    [entries, now],
-  )
+  const { workedSeconds, breakSeconds } = useMemo(() => computeDay(entries, now), [entries, now])
 
   const dailyTarget = (contractHours / 5) * 3600
   const progress = dailyTarget > 0 ? workedSeconds / dailyTarget : 0
@@ -102,7 +92,7 @@ export function PunchPanel({
     seenIds.current = ids
     if (!added) return
     setHighlightId(added.id)
-    const timer = window.setTimeout(() => setHighlightId(null), 2200)
+    const timer = window.setTimeout(() => setHighlightId(null), 2400)
     return () => window.clearTimeout(timer)
   }, [entries])
 
@@ -136,17 +126,11 @@ export function PunchPanel({
   const hasWarnings = !online || queued.length > 0
 
   return (
-    <section className="flex h-full w-full flex-col lg:h-auto">
-      {/* --- Identidad y estado ----------------------------------------- */}
-      <header className="rise glass-strong flex shrink-0 items-center justify-between gap-3 rounded-[20px] px-4 py-3">
-        <div className="flex min-w-0 items-center gap-3">
-          <span
-            className={cx(
-              'flex h-10 w-10 shrink-0 items-center justify-center rounded-[14px] text-[13px] font-bold text-white',
-              'bg-[linear-gradient(140deg,var(--color-violet-500),var(--color-violet-700))]',
-              'shadow-[0_6px_16px_-4px_rgb(124_58_237/0.5)]',
-            )}
-          >
+    <section className="flex h-full w-full flex-col gap-3">
+      {/* --- Identidad y estado ------------------------------------------ */}
+      <header className="surface flex shrink-0 items-center justify-between gap-3 rounded-[12px] px-3.5 py-2.5">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[8px] bg-violet-700 text-[12px] font-semibold text-white">
             {personName
               .split(' ')
               .slice(0, 2)
@@ -155,7 +139,7 @@ export function PunchPanel({
           </span>
           <div className="min-w-0">
             <MicroLabel>Jornada de hoy</MicroLabel>
-            <p className="mt-1 truncate text-[15px] font-bold tracking-tight text-ink">
+            <p className="mt-1 truncate text-[14px] font-semibold tracking-tight text-ink">
               {personName}
             </p>
           </div>
@@ -163,10 +147,10 @@ export function PunchPanel({
         <StatusPill status={status} pulse />
       </header>
 
-      {/* --- Aviso previo (sin conexión / cola pendiente) ----------------- */}
+      {/* --- Aviso: sin conexión o cola pendiente -------------------------- */}
       {hasWarnings && (
-        <div className="mt-2.5 shrink-0 rounded-[12px] border border-[#e07a1b]/25 bg-rest-soft/70 px-3.5 py-2 backdrop-blur-md">
-          <p className="flex items-start gap-2 text-[12px] leading-relaxed text-[#8a4708]">
+        <div className="shrink-0 rounded-[8px] border border-orange-200 bg-rest-soft px-3 py-2">
+          <p className="flex items-start gap-2 text-[12px] leading-relaxed text-orange-800">
             <CloudOff size={14} className="mt-px shrink-0" />
             <span>
               {!online &&
@@ -180,148 +164,48 @@ export function PunchPanel({
         </div>
       )}
 
-      {/* --- El anillo: centro de gravedad de la pantalla ------------------ */}
-      <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-4 py-3 tall:gap-5 tall:py-5">
-        <div
-          className="rise relative w-[min(72vw,15rem)] max-w-full tall:w-[min(76vw,17rem)]"
-          style={{ animationDelay: '80ms' }}
-        >
-          <ProgressRing
-            progress={progress}
-            status={status}
-            overtime={progress > 1}
-            className="aspect-square w-full"
-          >
-            <MicroLabel>Trabajado hoy</MicroLabel>
-            <FlipClock
-              seconds={workedSeconds}
-              muted={status === 'off' && workedSeconds === 0}
-              className="mt-2 text-[clamp(2.1rem,10.5vw,3rem)]"
-            />
-            <p className="mt-1.5 max-w-[10rem] text-center text-[12px] leading-snug text-ink-soft">
-              {status === 'off'
-                ? entries.length === 0
-                  ? 'Aún no has fichado'
-                  : 'Jornada cerrada'
-                : remaining > 0
-                  ? `Quedan ${formatDuration(remaining)}`
-                  : `+${formatDuration(workedSeconds - dailyTarget)} sobre tu jornada`}
-            </p>
-          </ProgressRing>
-        </div>
-
-        {/* Cifras de apoyo: discretas, en una sola línea. */}
-        <div
-          className="rise flex items-center gap-4 text-[12px] text-ink-soft"
-          style={{ animationDelay: '160ms' }}
-        >
-          <span>
-            Pausas <span className="tnum font-bold text-ink">{formatDuration(breakSeconds)}</span>
-          </span>
-          <span className="h-3 w-px bg-[color:var(--color-hairline)]" />
-          <span>
-            Objetivo <span className="tnum font-bold text-ink">{formatDuration(dailyTarget)}</span>
-          </span>
-          <span className="h-3 w-px bg-[color:var(--color-hairline)]" />
-          <span className="tnum">
-            {now.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}
-          </span>
-        </div>
-
-        {/* --- Línea de tiempo del día ------------------------------------ */}
-        <div className="rise w-full" style={{ animationDelay: '220ms' }}>
-        {entries.length === 0 ? (
-          <p className="px-1 pb-2.5 text-center text-[12px] text-ink-faint">
-            Tus fichajes de hoy aparecerán aquí
+      {/* --- Dato y acción ------------------------------------------------
+          Este bloque es el que cede espacio: `min-h-0` más `flex-1` permiten
+          que el dial se encoja en pantallas bajas en lugar de empujar las
+          acciones fuera de la vista. */}
+      <div className="flex min-h-0 flex-1 flex-col items-center justify-center gap-3 tall:gap-4">
+        {/* Tiempo trabajado: el dato principal, y por eso va arriba y grande. */}
+        <div className="rise shrink-0 text-center">
+          <MicroLabel>Trabajado hoy</MicroLabel>
+          <FlipClock
+            seconds={workedSeconds}
+            muted={status === 'off' && workedSeconds === 0}
+            className="mt-1.5 block text-[clamp(1.75rem,9vw,3.1rem)] leading-none tall:text-[clamp(2.2rem,11vw,3.1rem)]"
+          />
+          <p className="mt-2 text-[12px] text-ink-soft">
+            {status === 'off'
+              ? entries.length === 0
+                ? 'Aún no has fichado hoy'
+                : 'Jornada cerrada'
+              : remaining > 0
+                ? `Quedan ${formatDuration(remaining)} de ${formatDuration(dailyTarget)}`
+                : `${formatDuration(workedSeconds - dailyTarget)} por encima de tu jornada`}
           </p>
-        ) : (
-          <ol
-            className={cx(
-              'flex snap-x gap-2 overflow-x-auto px-4 pb-2.5',
-              '[scrollbar-width:none] [&::-webkit-scrollbar]:hidden',
-              '[&>li:first-child]:ml-auto [&>li:last-child]:mr-auto',
-              '[mask-image:linear-gradient(90deg,transparent,#000_1.25rem,#000_calc(100%-1.25rem),transparent)]',
-            )}
-          >
-            {entries.map((entry) => (
-              <li key={entry.id} className="snap-start">
-                <span
-                  className={cx(
-                    'glass flex items-center gap-2 rounded-[12px] px-3 py-2 transition-all duration-500',
-                    highlightId === entry.id &&
-                      'ring-2 ring-violet-400 ring-offset-2 ring-offset-transparent',
-                  )}
-                >
-                  <span className={cx('h-1.5 w-1.5 shrink-0 rounded-full', DOT_TONE[entry.entry_type])} />
-                  <span className="tnum text-[13px] font-bold text-ink">
-                    {formatTime(entry.event_at)}
-                  </span>
-                  <span className="text-[11px] whitespace-nowrap text-ink-soft">
-                    {ENTRY_LABEL[entry.entry_type]}
-                  </span>
-                  {entry.origin === 'correction' && <Badge tone="warn">rectificado</Badge>}
-                  {entry.origin === 'employee_offline' && <Badge tone="neutral">diferido</Badge>}
-                </span>
-              </li>
-            ))}
-          </ol>
-        )}
         </div>
-      </div>
 
-      {/* --- Acciones ----------------------------------------------------- */}
-      <footer className="rise relative shrink-0" style={{ animationDelay: '280ms' }}>
-        {error && (
-          <div
-            role="alert"
-            className="punch-toast absolute inset-x-0 bottom-full mb-2 flex items-start gap-2 rounded-[12px] border border-red-200 bg-red-50/90 px-3.5 py-2.5 text-[13px] text-red-800 backdrop-blur-md"
-          >
-            <AlertTriangle size={15} className="mt-px shrink-0" />
-            <span className="leading-relaxed">{error}</span>
-          </div>
-        )}
-
-        <div className={cx('grid gap-2.5', secondary ? 'grid-cols-[1.9fr_1fr]' : '')}>
-          <HoldButton
+        {/* El dial: círculo de acción con el anillo de progreso alrededor.
+            Lo dimensiona la ALTURA disponible, no el ancho: fijarlo en `vw` y
+            dejar que `aspect-square` reclamase la altura correspondiente hacía
+            que en pantallas bajas el círculo se saliera de su caja. Aquí el
+            contenedor se queda con el hueco que sobra y el dial se ajusta a
+            él; `max-h` impide que en tabletas crezca hasta lo ridículo. */}
+        <div className="flex min-h-0 w-full flex-1 items-center justify-center">
+          <PunchDial
             onHoldComplete={() => handle(primary)}
+            action={PRIMARY_LABEL[primary]}
+            icon={<PrimaryIcon size={22} strokeWidth={2.2} />}
+            dayProgress={progress}
             disabled={pending !== null}
-            tone="dark"
-            label={PRIMARY_LABEL[primary]}
-            icon={<PrimaryIcon size={20} strokeWidth={2.4} />}
-            className={cx(
-              'h-[3.75rem] rounded-[18px] px-4 text-[16px] tall:h-[4.25rem]',
-              primary === 'clock_out'
-                ? 'bg-[linear-gradient(135deg,#3b1d64,#1b0a33)] shadow-[0_10px_30px_-8px_rgb(27_10_51/0.55)]'
-                : 'bg-[linear-gradient(135deg,var(--color-violet-600),var(--color-violet-500))] shadow-[0_10px_30px_-8px_rgb(124_58_237/0.6)]',
-            )}
-          >
-            {PRIMARY_LABEL[primary]}
-          </HoldButton>
-
-          {secondary && (
-            <HoldButton
-              onHoldComplete={() => handle(secondary)}
-              disabled={pending !== null}
-              tone="light"
-              label={secondary === 'break_start' ? 'Iniciar pausa' : 'Fichar salida'}
-              icon={
-                secondary === 'break_start' ? (
-                  <Coffee size={18} strokeWidth={2.4} />
-                ) : (
-                  <LogOut size={18} strokeWidth={2.4} />
-                )
-              }
-              className={cx(
-                'glass h-[3.75rem] rounded-[18px] px-3 text-sm tall:h-[4.25rem]',
-                secondary === 'break_start' ? 'text-[#8a4708]' : 'text-ink',
-              )}
-            >
-              {secondary === 'break_start' ? 'Pausa' : 'Salir'}
-            </HoldButton>
-          )}
+            className="rise h-full max-h-[13.5rem] min-h-[5.5rem] w-auto"
+          />
         </div>
 
-        <p className="mt-2.5 mb-1 flex items-center justify-center gap-1.5 text-[11px] font-medium text-ink-soft">
+        <p className="flex shrink-0 items-center justify-center gap-1.5 text-[11.5px] font-medium text-ink-soft">
           Mantén pulsado para confirmar
           {geoEnabled && (
             <>
@@ -330,7 +214,87 @@ export function PunchPanel({
             </>
           )}
         </p>
-      </footer>
+
+        {secondary && (
+          <div className="rise shrink-0" style={{ animationDelay: '120ms' }}>
+            <PunchPill
+              onHoldComplete={() => handle(secondary)}
+              disabled={pending !== null}
+              label={secondary === 'break_start' ? 'Pausa' : 'Salir'}
+              icon={
+                secondary === 'break_start' ? (
+                  <Coffee size={15} strokeWidth={2.2} />
+                ) : (
+                  <LogOut size={15} strokeWidth={2.2} />
+                )
+              }
+            />
+          </div>
+        )}
+      </div>
+
+      {/* --- Error -------------------------------------------------------- */}
+      {error && (
+        <div
+          role="alert"
+          className="shrink-0 rounded-[8px] border border-red-200 bg-red-50 px-3 py-2 text-[12.5px] text-red-800"
+        >
+          <span className="flex items-start gap-2 leading-relaxed">
+            <AlertTriangle size={14} className="mt-px shrink-0" />
+            {error}
+          </span>
+        </div>
+      )}
+
+      {/* --- Movimientos del día ------------------------------------------
+          Altura fija: nunca empuja a las acciones. Con muchos fichajes la
+          tira se desplaza en horizontal, que es un gesto propio de una fila
+          de fichas y no el desplazamiento vertical de la pantalla. */}
+      <div className="shrink-0">
+        <div className="mb-1.5 flex items-baseline justify-between">
+          <MicroLabel>Movimientos</MicroLabel>
+          <span className="tnum text-[11px] text-ink-faint">
+            {now.toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit' })}
+            {breakSeconds > 0 && ` · pausas ${formatDuration(breakSeconds)}`}
+          </span>
+        </div>
+
+        {entries.length === 0 ? (
+          <p className="surface-flat rounded-[8px] px-3 py-2.5 text-center text-[12px] text-ink-faint">
+            Tus fichajes de hoy aparecerán aquí
+          </p>
+        ) : (
+          <ol
+            className={cx(
+              'flex gap-1.5 overflow-x-auto pb-0.5',
+              '[scrollbar-width:none] [&::-webkit-scrollbar]:hidden',
+            )}
+          >
+            {entries.map((entry) => (
+              <li key={entry.id} className="shrink-0">
+                <span
+                  className={cx(
+                    'flex items-center gap-1.5 rounded-[8px] border px-2.5 py-1.5 transition-colors duration-500',
+                    highlightId === entry.id
+                      ? 'border-violet-300 bg-violet-50'
+                      : 'border-[color:var(--color-hairline)] bg-surface',
+                  )}
+                >
+                  <span
+                    className={cx('h-1.5 w-1.5 shrink-0 rounded-full', DOT_TONE[entry.entry_type])}
+                  />
+                  <span className="tnum text-[12.5px] font-semibold text-ink">
+                    {formatTime(entry.event_at)}
+                  </span>
+                  <span className="text-[11px] whitespace-nowrap text-ink-soft">
+                    {ENTRY_LABEL[entry.entry_type]}
+                  </span>
+                </span>
+              </li>
+            ))}
+          </ol>
+        )}
+      </div>
     </section>
   )
 }
