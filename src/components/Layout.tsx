@@ -13,7 +13,7 @@ import {
 import type { ReactNode } from 'react'
 import { useSession } from '../context/SessionContext'
 import { ROLE_LABEL, type WorkStatus } from '../lib/types'
-import { Aurora, Badge, cx } from './ui'
+import { AppBackground, Badge, cx } from './ui'
 import { UpdatePrompt } from './UpdatePrompt'
 
 interface NavItem {
@@ -35,58 +35,56 @@ const NAV: NavItem[] = [
   { to: '/ajustes', label: 'Ajustes', short: 'Ajustes', icon: Settings, roles: ['employee', 'manager', 'admin', 'inspector'] },
 ]
 
+/**
+ * ARMAZÓN DE LA APLICACIÓN
+ *
+ * La regla estructural: el armazón mide exactamente la pantalla y NADA se
+ * desplaza. `h-dvh` más `overflow-hidden` en la raíz, y `min-h-0` en la zona
+ * de contenido para que sea ella la que ceda. Cada sección recibe una caja de
+ * altura conocida y se organiza dentro; las listas sin final se paginan.
+ *
+ * `dvh` y no `vh` a propósito: en el móvil la barra del navegador aparece y
+ * desaparece, y con `vh` el muelle de navegación queda tapado justo cuando se
+ * va a pulsar.
+ */
 export function Layout({
   children,
   status,
 }: {
   children: ReactNode
-  /** Estado de jornada: tiñe la luz del fondo de toda la aplicación. */
+  /** Estado de jornada. Se conserva por compatibilidad de la firma. */
   status?: WorkStatus
 }) {
   const { session, logout, isDemo } = useSession()
   const location = useLocation()
   if (!session) return null
 
+  void status
+
   const role = session.profile.role
   const items = NAV.filter((item) => item.roles.includes(role))
   const mobileItems = items.slice(0, 5)
-  const isPunchScreen = location.pathname === '/'
 
   return (
-    <div
-      className={cx(
-        'flex flex-col',
-        isPunchScreen ? 'h-dvh overflow-hidden' : 'min-h-dvh',
-      )}
-    >
-      <Aurora status={status} />
+    <div className="flex h-dvh flex-col overflow-hidden">
+      <AppBackground />
 
-      {/* --- Barra superior de cristal ------------------------------------ */}
-      <header className="sticky top-0 z-30 shrink-0">
-        <div className="mx-auto flex h-16 max-w-7xl items-center gap-4 px-4 sm:px-6">
-          <div className="flex items-center gap-2.5">
-            <span
-              className={cx(
-                'flex h-9 w-9 items-center justify-center rounded-[12px] text-white',
-                'bg-[linear-gradient(140deg,var(--color-violet-500),var(--color-violet-700))]',
-                'shadow-[0_6px_18px_-4px_rgb(124_58_237/0.55)]',
-              )}
-            >
-              <Timer size={18} strokeWidth={2.5} />
+      {/* --- Barra superior ----------------------------------------------- */}
+      <header className="shrink-0 border-b border-[color:var(--color-hairline)] bg-surface">
+        <div className="mx-auto flex h-13 max-w-7xl items-center gap-3 px-3 sm:px-5">
+          <div className="flex items-center gap-2">
+            <span className="flex h-7 w-7 items-center justify-center rounded-[6px] bg-violet-700 text-white">
+              <Timer size={15} strokeWidth={2.4} />
             </span>
             <div className="leading-tight">
-              <p className="font-display text-[15px] font-bold tracking-tight text-ink">
-                Fichaje
-              </p>
-              <p className="hidden text-[10px] font-medium text-ink-soft sm:block">
-                {session.company.name}
-              </p>
+              <p className="text-[13.5px] font-semibold tracking-tight text-ink">Fichaje</p>
+              <p className="hidden text-[10px] text-ink-soft sm:block">{session.company.name}</p>
             </div>
           </div>
 
-          {/* Navegación de escritorio: cápsula de cristal con indicador que
-              se desliza bajo la pestaña activa. */}
-          <nav className="glass ml-4 hidden items-center gap-0.5 rounded-full p-1 lg:flex">
+          {/* Navegación de escritorio. Pestañas con subrayado: el patrón que
+              usa cualquier herramienta de gestión, y el que menos estorba. */}
+          <nav className="ml-6 hidden items-center gap-0.5 self-stretch lg:flex">
             {items.map((item) => (
               <NavLink
                 key={item.to}
@@ -94,31 +92,29 @@ export function Layout({
                 end={item.to === '/'}
                 className={({ isActive }) =>
                   cx(
-                    'relative flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[13px] font-semibold',
-                    'transition-all duration-300 ease-[var(--ease-out-soft)]',
-                    isActive
-                      ? 'text-white'
-                      : 'text-ink-soft hover:bg-white/60 hover:text-ink',
+                    'relative flex items-center gap-1.5 px-3 text-[13px] font-medium',
+                    'transition-colors duration-150',
+                    isActive ? 'text-violet-800' : 'text-ink-soft hover:text-ink',
                   )
                 }
               >
                 {({ isActive }) => (
                   <>
+                    <item.icon size={14} strokeWidth={2.2} />
+                    <span>{item.label}</span>
                     {isActive && (
-                      <span className="absolute inset-0 rounded-full bg-[linear-gradient(135deg,var(--color-violet-600),var(--color-violet-500))] shadow-[0_4px_14px_-3px_rgb(124_58_237/0.6)]" />
+                      <span className="absolute inset-x-2 -bottom-px h-0.5 rounded-full bg-violet-700" />
                     )}
-                    <item.icon size={14} className="relative" strokeWidth={2.4} />
-                    <span className="relative">{item.label}</span>
                   </>
                 )}
               </NavLink>
             ))}
           </nav>
 
-          <div className="ml-auto flex items-center gap-2.5">
+          <div className="ml-auto flex items-center gap-2">
             {isDemo && <Badge tone="warn">demo</Badge>}
             <div className="hidden text-right sm:block">
-              <p className="text-[13px] font-bold text-ink">{session.profile.full_name}</p>
+              <p className="text-[12.5px] font-semibold text-ink">{session.profile.full_name}</p>
               <p className="text-[10px] text-ink-soft">{ROLE_LABEL[role]}</p>
             </div>
             <button
@@ -126,9 +122,9 @@ export function Layout({
               onClick={() => void logout()}
               title="Cerrar sesión"
               aria-label="Cerrar sesión"
-              className="glass flex h-9 w-9 items-center justify-center rounded-[12px] text-ink-soft transition-all duration-200 hover:-translate-y-px hover:text-violet-700"
+              className="flex h-8 w-8 items-center justify-center rounded-[6px] border border-[color:var(--color-hairline-strong)] bg-surface text-ink-soft transition-colors hover:bg-slate-50 hover:text-ink"
             >
-              <LogOut size={16} />
+              <LogOut size={15} />
             </button>
           </div>
         </div>
@@ -136,26 +132,24 @@ export function Layout({
 
       <UpdatePrompt />
 
-      {/* --- Contenido ---------------------------------------------------- */}
+      {/* --- Contenido ------------------------------------------------------
+          `min-h-0` es lo que hace que este bloque se encoja en lugar de
+          empujar el muelle fuera de la pantalla. Sin él, `flex-1` respeta la
+          altura natural del contenido y reaparece el desplazamiento. */}
       <main
         key={location.pathname}
-        className={cx(
-          'page-enter mx-auto w-full max-w-7xl px-4 sm:px-6',
-          isPunchScreen
-            ? 'min-h-0 flex-1 pb-[5.5rem] lg:pb-6'
-            : 'pt-2 pb-28 lg:pb-12',
-        )}
+        className="page-enter mx-auto flex w-full max-w-7xl min-h-0 flex-1 flex-col px-3 py-3 sm:px-5 lg:pb-5"
       >
         {children}
       </main>
 
-      {/* --- Dock flotante (móvil) ---------------------------------------- */}
+      {/* --- Muelle de navegación (móvil) ----------------------------------- */}
       <nav
-        className="fixed inset-x-0 bottom-0 z-30 px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] lg:hidden"
+        className="shrink-0 px-3 pb-[max(0.5rem,env(safe-area-inset-bottom))] lg:hidden"
         aria-label="Navegación principal"
       >
         <ul
-          className="glass-strong mx-auto grid max-w-md rounded-[22px] p-1.5"
+          className="dock mx-auto grid max-w-md rounded-[12px] p-1"
           style={{ gridTemplateColumns: `repeat(${mobileItems.length}, minmax(0, 1fr))` }}
         >
           {mobileItems.map((item) => (
@@ -165,23 +159,16 @@ export function Layout({
                 end={item.to === '/'}
                 className={({ isActive }) =>
                   cx(
-                    'relative flex flex-col items-center gap-1 rounded-[16px] py-2 text-[10px] font-bold',
-                    'transition-all duration-300 ease-[var(--ease-out-soft)]',
-                    isActive ? 'text-white' : 'text-ink-soft active:scale-95',
+                    'flex flex-col items-center gap-0.5 rounded-[8px] py-1.5 text-[10px] font-medium',
+                    'transition-colors duration-150',
+                    isActive ? 'bg-violet-50 text-violet-800' : 'text-ink-soft',
                   )
                 }
               >
                 {({ isActive }) => (
                   <>
-                    {isActive && (
-                      <span className="absolute inset-0 rounded-[16px] bg-[linear-gradient(140deg,var(--color-violet-600),var(--color-violet-500))] shadow-[0_6px_18px_-4px_rgb(124_58_237/0.55)]" />
-                    )}
-                    <item.icon
-                      size={18}
-                      strokeWidth={isActive ? 2.6 : 2.1}
-                      className="relative"
-                    />
-                    <span className="relative">{item.short}</span>
+                    <item.icon size={17} strokeWidth={isActive ? 2.4 : 2} />
+                    <span>{item.short}</span>
                   </>
                 )}
               </NavLink>
@@ -193,6 +180,11 @@ export function Layout({
   )
 }
 
+/**
+ * Cabecera de sección. Compacta a propósito: cada píxel que ocupa aquí es un
+ * píxel que la tabla de abajo pierde, y con la pantalla como límite duro eso
+ * se traduce en una fila menos por página.
+ */
 export function PageHeader({
   title,
   description,
@@ -203,18 +195,16 @@ export function PageHeader({
   action?: ReactNode
 }) {
   return (
-    <div className="mb-5 flex flex-wrap items-end justify-between gap-3 pt-3">
-      <div>
-        <h1 className="font-display text-[26px] leading-tight font-bold tracking-[-0.03em] text-ink">
+    <div className="mb-2.5 flex shrink-0 items-center justify-between gap-2">
+      <div className="min-w-0 flex-1">
+        <h1 className="text-[19px] leading-tight font-semibold tracking-[-0.022em] text-ink">
           {title}
         </h1>
         {description && (
-          <p className="mt-1.5 max-w-2xl text-[13px] leading-relaxed text-ink-soft">
-            {description}
-          </p>
+          <p className="mt-0.5 line-clamp-1 text-[12px] text-ink-soft">{description}</p>
         )}
       </div>
-      {action}
+      {action && <div className="shrink-0">{action}</div>}
     </div>
   )
 }

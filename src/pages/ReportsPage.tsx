@@ -3,6 +3,7 @@ import { ChevronLeft, ChevronRight, FileDown, FileSpreadsheet, Users } from 'luc
 import { useSession } from '../context/SessionContext'
 import { PageHeader } from '../components/Layout'
 import {
+  Tabs,
   Button,
   MicroLabel,
   Notice,
@@ -27,6 +28,7 @@ export function ReportsPage() {
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [loading, setLoading] = useState(true)
   const [exporting, setExporting] = useState(false)
+  const [tab, setTab] = useState<'plantilla' | 'exportar'>('plantilla')
 
   const range = useMemo(() => {
     const from = new Date(cursor.getFullYear(), cursor.getMonth(), 1)
@@ -107,14 +109,29 @@ export function ReportsPage() {
   }
 
   return (
-    <>
+    <div className="flex min-h-0 flex-1 flex-col">
       <PageHeader
         title="Informes mensuales"
-        description="Genere el resumen oficial de jornada, individual o de toda la plantilla, listo para entregar a la persona trabajadora, a la RLT o a la Inspección."
+        description="Resumen oficial de jornada para la plantilla, la RLT o la Inspección."
       />
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
-        <Panel>
+      <Tabs
+        tabs={[
+          { id: 'plantilla' as const, label: 'Plantilla' },
+          { id: 'exportar' as const, label: 'Exportar', count: chosen.length },
+        ]}
+        active={tab}
+        onChange={setTab}
+        className="surface mb-2.5 rounded-[10px] border-b-0 lg:hidden"
+      />
+
+      <div className="grid min-h-0 flex-1 gap-3 lg:grid-cols-[minmax(0,1fr)_320px]">
+        <Panel
+          className={cx(
+            'flex min-h-0 flex-col overflow-hidden lg:flex',
+            tab !== 'plantilla' && 'hidden',
+          )}
+        >
           <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-4 py-3">
             <div className="flex items-center gap-1">
               <Button
@@ -157,7 +174,7 @@ export function ReportsPage() {
               <Spinner /> Calculando jornadas del mes…
             </div>
           ) : (
-            <div className="overflow-x-auto">
+            <div className="min-h-0 flex-1 overflow-auto">
               <table className="w-full min-w-[640px] text-left">
                 <thead>
                   <tr className="border-b border-slate-200 bg-slate-50">
@@ -238,7 +255,12 @@ export function ReportsPage() {
         </Panel>
 
         {/* --- Panel de exportación -------------------------------------- */}
-        <div className="flex flex-col gap-4">
+        <div
+          className={cx(
+            'flex min-h-0 flex-col gap-2.5 overflow-y-auto lg:flex',
+            tab !== 'exportar' && 'hidden',
+          )}
+        >
           <Panel className="h-fit">
             <PanelHeader title="Exportar" hint={`${chosen.length} persona(s) seleccionada(s)`} />
             <div className="flex flex-col gap-3 px-4 py-4">
@@ -302,6 +324,6 @@ export function ReportsPage() {
           </Notice>
         </div>
       </div>
-    </>
+    </div>
   )
 }

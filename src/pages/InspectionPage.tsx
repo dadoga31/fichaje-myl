@@ -3,6 +3,8 @@ import { FileDown, Gavel, ShieldCheck } from 'lucide-react'
 import { useSession } from '../context/SessionContext'
 import { PageHeader } from '../components/Layout'
 import {
+  Pager,
+  Tabs,
   Badge,
   Button,
   MicroLabel,
@@ -22,6 +24,7 @@ import {
 } from '../lib/api'
 import { ENTRY_LABEL, type DailySummary, type Profile, type TimeEntry, type TimeEntryAudit } from '../lib/types'
 import { formatDate, formatDuration, formatTime, toISODate } from '../lib/time'
+import { paginarPorAltura, useBoxHeight } from '../hooks/useFitRows'
 
 /**
  * VISTA DE INSPECCIÓN
@@ -48,6 +51,13 @@ export function InspectionPage() {
   const [raw, setRaw] = useState<TimeEntry[]>([])
   const [summaries, setSummaries] = useState<DailySummary[]>([])
   const [audits, setAudits] = useState<TimeEntryAudit[]>([])
+  const [tab, setTab] = useState<'libro' | 'rect'>('libro')
+  const [page, setPage] = useState(0)
+
+  // Los días no miden todos lo mismo: uno con dos fichajes ocupa la mitad que
+  // uno con ocho. Por eso se mide la caja y se empaquetan días hasta llenarla,
+  // en vez de dividir por una altura media que recortaría los días largos.
+  const [libroRef, altoLibro] = useBoxHeight<HTMLUListElement>()
   const [loading, setLoading] = useState(false)
 
   useEffect(() => {
@@ -103,8 +113,18 @@ export function InspectionPage() {
     return [...map.entries()].sort((a, b) => b[0].localeCompare(a[0]))
   }, [raw])
 
+  // 30 px de cabecera del día más 30 por asiento. Ambas alturas están FIJADAS
+  // en el marcado (`h-[30px]`) justamente para que esta cuenta sea exacta y no
+  // una estimación: con filas de alto variable, el último día se recortaba.
+  const libro = paginarPorAltura(
+    byDate,
+    ([, entries]) => 30 + entries.length * 30,
+    altoLibro,
+    page,
+  )
+
   return (
-    <>
+    <div className="flex min-h-0 flex-1 flex-col">
       <PageHeader
         title="Vista de Inspección"
         description="Acceso de solo lectura al registro completo, incluidos los asientos sustituidos por una rectificación. Preparado para su presentación ante la Inspección de Trabajo o la representación legal de la plantilla."
@@ -115,59 +135,52 @@ export function InspectionPage() {
           ningún camino de escritura que modifique o borre un asiento, y que
           la hora de grabación la pone el servidor. No se habla de cadenas de
           verificación que esta base de datos no calcula. */}
-      <div className="mb-4">
+      <div className="mb-2.5 hidden shrink-0 lg:block">
         <Notice tone="ok" icon={<ShieldCheck size={16} />}>
           <span className="font-medium">Registro inalterable.</span> En {company.name}{' '}
-          ningún perfil —tampoco administración— puede modificar ni borrar un fichaje
-          ya registrado: las reglas de seguridad del servidor no contemplan esa
-          operación. La hora de grabación de cada asiento la sella el servidor, no el
-          dispositivo. Las rectificaciones aparecen abajo, junto al asiento original
-          que sustituyen.
+          ningún perfil —tampoco administración— puede modificar ni borrar un fichaje ya
+          registrado: las reglas del servidor no contemplan esa operación, y la hora de
+          grabación la sella el servidor, no el dispositivo.
+          <span className="hidden sm:inline">
+            {' '}Las rectificaciones constan junto al asiento original que sustituyen.
+          </span>
         </Notice>
       </div>
 
-      {/* --- Selector de sujeto y periodo -------------------------------- */}
-      <Panel className="mb-4">
-        <div className="grid gap-3 px-4 py-4 sm:grid-cols-[minmax(0,1fr)_150px_150px_auto] sm:items-end">
-          <div className="flex flex-col gap-1.5">
-            <label htmlFor="person" className="text-xs font-medium text-slate-700">
-              Persona trabajadora
-            </label>
-            <select
-              id="person"
-              className={inputClass}
-              value={personId}
-              onChange={(e) => setPersonId(e.target.value)}
-            >
-              {people.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.full_name} {p.employee_number ? `(${p.employee_number})` : ''}
-                </option>
-              ))}
-            </select>
-          </div>
+      {/* --- Selector de sujeto y periodo --------------------------------
+          Una sola fila, sin etiquetas sobre cada campo: en móvil los cuatro
+          controles apilados con su etiqueta ocupaban 250 px y dejaban el
+          libro sin espacio. El `aria-label` mantiene la accesibilidad. */}
+      <Panel className="mb-2.5 shrink-0">
+        <div className="grid gap-2 px-2.5 py-2 sm:grid-cols-[minmax(0,1fr)_140px_140px_auto] sm:items-center">
+          <select
+            id="person"
+            aria-label="Persona trabajadora"
+            className={cx(inputClass, 'h-9 text-[12.5px]')}
+            value={personId}
+            onChange={(e) => setPersonId(e.target.value)}
+          >
+            {people.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.full_name} {p.employee_number ? `(${p.employee_number})` : ''}
+              </option>
+            ))}
+          </select>
 
-          <div className="flex flex-col gap-1.5">
-            <label htmlFor="from" className="text-xs font-medium text-slate-700">
-              Desde
-            </label>
+          <div className="grid grid-cols-2 gap-2 sm:contents">
             <input
               id="from"
               type="date"
-              className={inputClass}
+              aria-label="Desde"
+              className={cx(inputClass, 'h-9 text-[12.5px]')}
               value={from}
               onChange={(e) => setFrom(e.target.value)}
             />
-          </div>
-
-          <div className="flex flex-col gap-1.5">
-            <label htmlFor="to" className="text-xs font-medium text-slate-700">
-              Hasta
-            </label>
             <input
               id="to"
               type="date"
-              className={inputClass}
+              aria-label="Hasta"
+              className={cx(inputClass, 'h-9 text-[12.5px]')}
               value={to}
               onChange={(e) => setTo(e.target.value)}
             />
@@ -175,6 +188,7 @@ export function InspectionPage() {
 
           <Button
             variant="primary"
+            size="sm"
             disabled={!person || summaries.length === 0}
             onClick={() => {
               if (!person) return
@@ -190,15 +204,30 @@ export function InspectionPage() {
               })()
             }}
           >
-            <FileDown size={15} />
+            <FileDown size={14} />
             Certificado PDF
           </Button>
         </div>
       </Panel>
 
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
+      <Tabs
+        tabs={[
+          { id: 'libro' as const, label: 'Libro de fichajes' },
+          { id: 'rect' as const, label: 'Rectificaciones', count: audits.length },
+        ]}
+        active={tab}
+        onChange={setTab}
+        className="surface mb-2.5 rounded-[10px] border-b-0 lg:hidden"
+      />
+
+      <div className="grid min-h-0 flex-1 gap-3 lg:grid-cols-[minmax(0,1fr)_340px]">
         {/* --- Libro de asientos ----------------------------------------- */}
-        <Panel>
+        <Panel
+          className={cx(
+            'flex min-h-0 flex-col overflow-hidden lg:flex',
+            tab !== 'libro' && 'hidden',
+          )}
+        >
           <PanelHeader
             title="Libro de fichajes"
             hint={
@@ -219,12 +248,12 @@ export function InspectionPage() {
               </p>
             </div>
           ) : (
-            <ul className="max-h-[640px] overflow-y-auto">
-              {byDate.map(([date, entries]) => {
+            <ul ref={libroRef} className="min-h-0 flex-1 overflow-hidden">
+              {libro.slice.map(([date, entries]) => {
                 const summary = summaries.find((s) => s.work_date === date)
                 return (
                   <li key={date} className="border-b border-slate-100 last:border-b-0">
-                    <div className="flex items-center justify-between gap-2 bg-slate-50 px-4 py-2">
+                    <div className="flex h-[30px] items-center justify-between gap-2 bg-slate-50 px-3">
                       <span className="text-[12px] font-semibold text-slate-800">
                         {new Date(`${date}T12:00:00`).toLocaleDateString('es-ES', {
                           weekday: 'long',
@@ -238,14 +267,14 @@ export function InspectionPage() {
                       </span>
                     </div>
 
-                    <ul className="px-4 py-1">
+                    <ul className="px-3">
                       {entries.map((entry) => {
                         const isSuperseded = supersededIds.has(entry.id)
                         return (
                           <li
                             key={entry.id}
                             className={cx(
-                              'flex flex-wrap items-center gap-2 border-b border-slate-50 py-2 text-[13px] last:border-b-0',
+                              'flex h-[30px] items-center gap-2 border-b border-slate-50 text-[12.5px] last:border-b-0',
                               (isSuperseded || entry.is_annulment) && 'opacity-60',
                             )}
                           >
@@ -290,10 +319,24 @@ export function InspectionPage() {
               })}
             </ul>
           )}
+          <div className="shrink-0 border-t border-[color:var(--color-hairline)] px-3 py-2">
+            <Pager
+              page={libro.page}
+              pages={libro.pages}
+              total={byDate.length}
+              onPage={setPage}
+              unit="días"
+            />
+          </div>
         </Panel>
 
         {/* --- Rectificaciones del periodo -------------------------------- */}
-        <Panel className="h-fit">
+        <Panel
+          className={cx(
+            'flex min-h-0 flex-col overflow-hidden lg:flex',
+            tab !== 'rect' && 'hidden',
+          )}
+        >
           <PanelHeader
             title="Rectificaciones"
             hint="Con hora original, hora nueva, motivo y autor"
@@ -306,7 +349,7 @@ export function InspectionPage() {
               </p>
             </div>
           ) : (
-            <ul className="max-h-[560px] overflow-y-auto">
+            <ul className="min-h-0 flex-1 overflow-y-auto">
               {audits.map((audit) => (
                 <li key={audit.id} className="border-b border-slate-100 px-4 py-3 last:border-b-0">
                   <div className="flex items-center justify-between gap-2">
@@ -348,6 +391,6 @@ export function InspectionPage() {
           )}
         </Panel>
       </div>
-    </>
+    </div>
   )
 }

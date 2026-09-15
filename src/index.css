@@ -1,115 +1,137 @@
 @import 'tailwindcss';
 
-/* Tipografías autoalojadas: la PWA debe verse igual sin conexión, así que no
-   se enlaza ninguna CDN de fuentes. */
-@import '@fontsource-variable/plus-jakarta-sans';
-@import '@fontsource-variable/bricolage-grotesque';
+/* Tipografía autoalojada: la PWA debe verse igual sin conexión, así que no se
+   enlaza ninguna CDN de fuentes.
 
-/* Variante por ALTURA de ventana: la pantalla de fichaje no scrollea, así que
-   en pantallas bajas los espacios y el reloj tienen que ceder. */
-@custom-variant tall (@media (min-height: 700px));
+   Inter, y solo Inter. La versión anterior usaba Bricolage Grotesque para los
+   títulos y el reloj: una grotesca de display, con detalles expresivos que
+   funcionan en una portada y restan seriedad en una herramienta de trabajo.
+   Un software de cumplimiento normativo no debe tener personalidad tipográfica
+   propia; debe desaparecer y dejar leer el dato. */
+@import '@fontsource-variable/inter';
+
+/* Variante por ALTURA de ventana: ninguna sección scrollea, así que en
+   pantallas bajas los espacios y el reloj tienen que ceder. */
+@custom-variant tall (@media (min-height: 720px));
+@custom-variant short (@media (max-height: 640px));
 
 /* =====================================================================
-   SISTEMA DE DISEÑO — "Aurora"
-   Cristal esmerilado blanco flotando sobre luz morada. El color no decora:
-   la luz de fondo CAMBIA con el estado de la jornada, de modo que la
-   pantalla entera dice si estás dentro, en pausa o fuera antes de leer nada.
+   SISTEMA DE DISEÑO — "Meridian"
+   Blanco, tinta y morado corporativo. Nada más.
+
+   Principio rector: la interfaz de una herramienta de registro legal tiene
+   que parecer un instrumento, no una aplicación de consumo. Eso significa
+   superficies sólidas en vez de cristal, radios contenidos, sombras cortas
+   y neutras, y color reservado para señalar estado — nunca para decorar.
    ===================================================================== */
 @theme {
-  /* --- Tinta. Negro violáceo, nunca gris lavado --------------------- */
-  --color-ink: #1b0a33;
-  --color-ink-soft: #6b5b85;
-  --color-ink-faint: #a99cbd;
+  /* --- Tinta ---------------------------------------------------------
+     Casi negra, con una gota de violeta para que conviva con la marca sin
+     delatarse. Un negro puro sobre blanco resulta duro en pantalla. */
+  --color-ink: #16141f;
+  --color-ink-soft: #5b5670;
+  --color-ink-faint: #8e89a3;
 
-  /* --- Lienzo y cristal --------------------------------------------- */
-  --color-canvas: #faf8ff;
-  --color-glass: rgb(255 255 255 / 0.72);
-  --color-glass-strong: rgb(255 255 255 / 0.88);
-  --color-hairline: rgb(27 10 51 / 0.08);
+  /* --- Lienzo y superficies ------------------------------------------
+     El fondo de la aplicación es casi blanco; las superficies son blanco
+     puro. Esa diferencia mínima es lo que separa una tarjeta del fondo sin
+     necesidad de sombras largas ni bordes gruesos. */
+  --color-canvas: #f7f6fa;
+  --color-surface: #ffffff;
+  --color-hairline: #e7e4ef;
+  --color-hairline-strong: #d6d2e3;
 
-  /* --- Morado corporativo ------------------------------------------- */
-  --color-violet-50: #f6f2ff;
-  --color-violet-100: #ede4ff;
-  --color-violet-200: #ddccff;
-  --color-violet-300: #c4a6fc;
+  /* --- Morado corporativo ---------------------------------------------
+     La escala del encargo original: morados profundos, de marca, no el
+     violeta neón que se había ido colando. */
+  --color-violet-50: #faf7ff;
+  --color-violet-100: #f3e8ff;
+  --color-violet-200: #e4d2fb;
+  --color-violet-300: #cbaaf5;
   --color-violet-400: #a855f7;
-  --color-violet-500: #8b3ff0;
-  --color-violet-600: #7c3aed;
-  --color-violet-700: #6520d9;
-  --color-violet-800: #4c1d95;
-  --color-violet-900: #2e1065;
+  --color-violet-500: #9333ea;
+  --color-violet-600: #7e22ce;
+  --color-violet-700: #6b21a8;
+  --color-violet-800: #581c87;
+  --color-violet-900: #3b0764;
 
-  /* --- Estados de jornada, con la misma saturación entre sí ---------- */
-  --color-live: #0d9f6e;
-  --color-live-soft: #d9f7ec;
-  --color-rest: #e07a1b;
-  --color-rest-soft: #fdefdc;
-  --color-idle: #8b7fa3;
-  --color-idle-soft: #f0ecf7;
+  /* --- Estados de jornada ---------------------------------------------
+     Desaturados a propósito. El verde brillante de la versión anterior
+     teñía media pantalla y era lo primero que hacía parecer la aplicación
+     un juguete. Aquí el estado se señala, no se celebra. */
+  --color-live: #0f7a55;
+  --color-live-soft: #e6f4ee;
+  --color-rest: #a8570b;
+  --color-rest-soft: #fbf0e1;
+  --color-idle: #7c7691;
+  --color-idle-soft: #f0eef5;
 
-  /* --- Neutros heredados, RE-TEÑIDOS hacia el violeta ------------------
-     Las pantallas que todavía usan la escala `slate` adoptan la paleta nueva
-     sin tocar doscientas llamadas: el gris deja de ser gris y pasa a tener el
-     mismo sesgo que el resto del sistema. Un gris puro delataría que el color
-     se heredó en vez de elegirse. */
-  --color-slate-50: #f8f6fd;
-  --color-slate-100: #f2eefb;
-  --color-slate-200: #e6e0f3;
-  --color-slate-300: #cfc6e2;
-  --color-slate-400: #a99cbd;
-  --color-slate-500: #8b7fa3;
-  --color-slate-600: #6b5b85;
-  --color-slate-700: #4f4266;
-  --color-slate-800: #33264a;
-  --color-slate-900: #1b0a33;
+  /* --- Neutros heredados ----------------------------------------------
+     Las pantallas que aún usan la escala `slate` adoptan estos valores sin
+     tocar cientos de llamadas. Apenas teñidos: antes iban tan cargados de
+     violeta que ningún gris era realmente gris y todo parecía lavado. */
+  --color-slate-50: #f8f7fb;
+  --color-slate-100: #f1eff6;
+  --color-slate-200: #e7e4ef;
+  --color-slate-300: #cfcbdd;
+  --color-slate-400: #a09ab4;
+  --color-slate-500: #7c7691;
+  --color-slate-600: #5b5670;
+  --color-slate-700: #433e56;
+  --color-slate-800: #2b2739;
+  --color-slate-900: #16141f;
 
-  /* Verdes y naranjas alineados con los estados de jornada. */
-  --color-emerald-50: #e4faf1;
-  --color-emerald-100: #c6f3e2;
-  --color-emerald-200: #a7ecd0;
-  --color-emerald-500: #0d9f6e;
-  --color-emerald-600: #0d9f6e;
-  --color-emerald-700: #07694a;
-  --color-emerald-800: #06563d;
-  --color-emerald-900: #044430;
+  --color-emerald-50: #e6f4ee;
+  --color-emerald-100: #cfe9de;
+  --color-emerald-200: #a9d7c4;
+  --color-emerald-500: #0f7a55;
+  --color-emerald-600: #0f7a55;
+  --color-emerald-700: #0b5c40;
+  --color-emerald-800: #094a34;
+  --color-emerald-900: #073a29;
 
-  --color-orange-50: #fdefdc;
-  --color-orange-100: #fbe0bd;
-  --color-orange-200: #f8cd96;
-  --color-orange-300: #f2b46a;
-  --color-orange-500: #e07a1b;
-  --color-orange-600: #c96a12;
-  --color-orange-700: #a85710;
-  --color-orange-800: #8a4708;
-  --color-orange-900: #6b3706;
+  --color-orange-50: #fbf0e1;
+  --color-orange-100: #f6e1c4;
+  --color-orange-200: #eecb9c;
+  --color-orange-300: #e0ac69;
+  --color-orange-500: #a8570b;
+  --color-orange-600: #944c09;
+  --color-orange-700: #7d4008;
+  --color-orange-800: #663306;
+  --color-orange-900: #4f2805;
 
-  --color-amber-50: #fdefdc;
-  --color-amber-200: #f8cd96;
-  --color-amber-500: #e07a1b;
-  --color-amber-700: #a85710;
-  --color-amber-800: #8a4708;
-  --color-amber-900: #6b3706;
+  --color-amber-50: #fbf0e1;
+  --color-amber-200: #eecb9c;
+  --color-amber-500: #a8570b;
+  --color-amber-700: #7d4008;
+  --color-amber-800: #663306;
+  --color-amber-900: #4f2805;
 
-  /* --- Tipografía ---------------------------------------------------- */
-  --font-display: 'Bricolage Grotesque Variable', 'Plus Jakarta Sans Variable', system-ui, sans-serif;
-  --font-sans: 'Plus Jakarta Sans Variable', system-ui, -apple-system, sans-serif;
+  /* --- Tipografía ------------------------------------------------------ */
+  --font-display: 'Inter Variable', system-ui, -apple-system, sans-serif;
+  --font-sans: 'Inter Variable', system-ui, -apple-system, sans-serif;
 
-  /* --- Radios DELIBERADAMENTE distintos por jerarquía ----------------
-     Héroe 28 · tarjeta 16 · control 10 · micro 6. Que no sea todo igual
-     es lo que evita el aspecto de plantilla. */
-  --radius-hero: 28px;
-  --radius-card: 16px;
-  --radius-control: 10px;
-  --radius-micro: 6px;
+  /* --- Radios ----------------------------------------------------------
+     Contenidos. La versión anterior llegaba a 28 px en las superficies
+     grandes: a ese radio una tarjeta deja de parecer un documento y empieza
+     a parecer una pastilla. */
+  --radius-hero: 16px;
+  --radius-card: 12px;
+  --radius-control: 8px;
+  --radius-micro: 4px;
 
-  /* --- Sombra: morada y difusa, nunca gris ---------------------------- */
-  --shadow-lift: 0 1px 2px rgb(76 29 149 / 0.04), 0 8px 24px -8px rgb(76 29 149 / 0.12);
-  --shadow-float: 0 2px 4px rgb(76 29 149 / 0.04), 0 18px 44px -12px rgb(76 29 149 / 0.2);
-  --shadow-hero: 0 4px 8px rgb(76 29 149 / 0.05), 0 32px 72px -20px rgb(76 29 149 / 0.3);
+  /* --- Sombras ---------------------------------------------------------
+     Cortas y NEUTRAS. Las sombras moradas y difusas del sistema anterior
+     hacían flotar cada elemento medio centímetro sobre el fondo; el
+     conjunto parecía una maqueta, no una herramienta. */
+  --shadow-lift: 0 1px 2px rgb(22 20 31 / 0.05), 0 1px 3px rgb(22 20 31 / 0.04);
+  --shadow-float: 0 2px 4px rgb(22 20 31 / 0.05), 0 8px 16px -6px rgb(22 20 31 / 0.1);
+  --shadow-hero: 0 4px 12px -2px rgb(22 20 31 / 0.08), 0 16px 32px -12px rgb(22 20 31 / 0.14);
 
-  /* --- Curvas de movimiento ------------------------------------------ */
-  --ease-out-soft: cubic-bezier(0.22, 1, 0.36, 1);
-  --ease-spring: cubic-bezier(0.34, 1.42, 0.48, 1);
+  /* --- Curvas de movimiento --------------------------------------------
+     Sin rebotes. Un `cubic-bezier` con sobreimpulso es simpático en una
+     aplicación de consumo y frívolo aquí. */
+  --ease-out-soft: cubic-bezier(0.32, 0.72, 0, 1);
 }
 
 @layer base {
@@ -124,209 +146,143 @@
     font-family: var(--font-sans);
     font-optical-sizing: auto;
     overscroll-behavior-y: none;
-    /* El texto sobre cristal necesita este ajuste o se ve engordado. */
     -webkit-font-smoothing: antialiased;
   }
 
   h1, h2, h3 {
     font-family: var(--font-display);
-    letter-spacing: -0.02em;
+    letter-spacing: -0.021em;
   }
 
   :focus-visible {
     outline: 2px solid var(--color-violet-600);
-    outline-offset: 3px;
-    border-radius: 4px;
+    outline-offset: 2px;
+    border-radius: 3px;
   }
 
   ::selection {
-    background: var(--color-violet-200);
+    background: var(--color-violet-100);
     color: var(--color-violet-900);
   }
 
   /* Cifras que se comparan en columna nunca deben bailar. */
   .tnum {
     font-variant-numeric: tabular-nums;
+    font-feature-settings: 'tnum' 1, 'cv01' 1;
   }
 }
 
 @layer components {
-  /* --- AURORA -------------------------------------------------------
-     Tres manchas de luz que se desplazan muy despacio. El tono lo fija
-     una variable que cambia con el estado de la jornada. */
-  .aurora {
+  /* --- FONDO ----------------------------------------------------------
+     Un solo velo de morado muy diluido en la esquina superior, fijo. No se
+     mueve, no late y NO cambia de color con la jornada: teñir la pantalla
+     entera de verde o de ámbar era ruido de marca, y además dejaba el
+     estado dependiendo únicamente del color. El estado se dice con texto,
+     icono y un punto, que es como se dice bien. */
+  .app-bg {
     position: fixed;
     inset: 0;
     z-index: -1;
-    overflow: hidden;
     pointer-events: none;
-    background: var(--color-canvas);
+    background:
+      radial-gradient(60rem 40rem at 88% -10%, rgb(147 51 234 / 0.07), transparent 62%),
+      radial-gradient(48rem 34rem at -8% 8%, rgb(107 33 168 / 0.05), transparent 58%),
+      var(--color-canvas);
   }
 
-  .aurora::before,
-  .aurora::after {
-    content: '';
-    position: absolute;
-    border-radius: 50%;
-    filter: blur(80px);
-    opacity: 0.55;
-    will-change: transform;
+  /* --- SUPERFICIE ------------------------------------------------------
+     Blanco sólido y una hairline real. El cristal esmerilado se ha retirado
+     de todas partes menos del muelle de navegación: sobre fondos claros
+     apenas se distingue de un blanco translúcido, cuesta rendimiento en
+     móviles modestos y vuelve ilegible el texto pequeño encima. */
+  .surface {
+    background: var(--color-surface);
+    border: 1px solid var(--color-hairline);
+    box-shadow: var(--shadow-lift);
   }
 
-  .aurora::before {
-    width: 60vmax;
-    height: 60vmax;
-    top: -22vmax;
-    left: -14vmax;
-    background: radial-gradient(circle at 50% 50%, var(--aurora-a, #c4a6fc), transparent 68%);
-    animation: aurora-drift-a 34s var(--ease-out-soft) infinite alternate;
+  .surface-flat {
+    background: var(--color-surface);
+    border: 1px solid var(--color-hairline);
   }
 
-  .aurora::after {
-    width: 52vmax;
-    height: 52vmax;
-    right: -18vmax;
-    bottom: -20vmax;
-    background: radial-gradient(circle at 50% 50%, var(--aurora-b, #a855f7), transparent 68%);
-    animation: aurora-drift-b 42s var(--ease-out-soft) infinite alternate;
+  /* Único superviviente del cristal: el muelle flota sobre el contenido y
+     ahí la translucidez sí informa de que hay algo debajo. */
+  .dock {
+    background: rgb(255 255 255 / 0.88);
+    backdrop-filter: blur(16px) saturate(1.3);
+    -webkit-backdrop-filter: blur(16px) saturate(1.3);
+    border: 1px solid var(--color-hairline);
+    box-shadow: var(--shadow-float);
   }
 
-  /* Tercera luz, más pequeña y saturada, para que no sea un degradado plano. */
-  .aurora-spark {
-    position: absolute;
-    width: 34vmax;
-    height: 34vmax;
-    top: 38%;
-    left: 46%;
-    border-radius: 50%;
-    filter: blur(90px);
-    opacity: 0.4;
-    background: radial-gradient(circle at 50% 50%, var(--aurora-c, #ede4ff), transparent 70%);
-    animation: aurora-drift-c 28s var(--ease-out-soft) infinite alternate;
-  }
-
-  @keyframes aurora-drift-a {
-    from { transform: translate3d(0, 0, 0) scale(1); }
-    to   { transform: translate3d(12vmax, 8vmax, 0) scale(1.18); }
-  }
-  @keyframes aurora-drift-b {
-    from { transform: translate3d(0, 0, 0) scale(1.1); }
-    to   { transform: translate3d(-14vmax, -10vmax, 0) scale(0.92); }
-  }
-  @keyframes aurora-drift-c {
-    from { transform: translate3d(-6vmax, 4vmax, 0); }
-    to   { transform: translate3d(8vmax, -8vmax, 0); }
-  }
-
-  /* La luz responde al estado: es la señal que se lee antes que el texto. */
-  [data-estado='working'] {
-    --aurora-a: #7ee2be;
-    --aurora-b: #a855f7;
-    --aurora-c: #d9f7ec;
-  }
-  [data-estado='break'] {
-    --aurora-a: #fbc78a;
-    --aurora-b: #c084fc;
-    --aurora-c: #fdefdc;
-  }
-  [data-estado='off'] {
-    --aurora-a: #c4a6fc;
-    --aurora-b: #a855f7;
-    --aurora-c: #ede4ff;
-  }
-
-  /* --- CRISTAL -------------------------------------------------------
-     El borde superior claro y el inferior oscuro simulan un canto real:
-     sin eso el "cristal" parece un rectángulo translúcido cualquiera. */
-  .glass {
-    background: var(--color-glass);
-    backdrop-filter: blur(20px) saturate(1.6);
-    -webkit-backdrop-filter: blur(20px) saturate(1.6);
-    border: 1px solid rgb(255 255 255 / 0.7);
-    box-shadow:
-      var(--shadow-lift),
-      inset 0 1px 0 0 rgb(255 255 255 / 0.9),
-      inset 0 -1px 0 0 rgb(27 10 51 / 0.04);
-  }
-
-  .glass-strong {
-    background: var(--color-glass-strong);
-    backdrop-filter: blur(28px) saturate(1.8);
-    -webkit-backdrop-filter: blur(28px) saturate(1.8);
-    border: 1px solid rgb(255 255 255 / 0.8);
-    box-shadow:
-      var(--shadow-float),
-      inset 0 1px 0 0 rgb(255 255 255 / 0.95);
-  }
-
-  /* Etiqueta micro: estructura la interfaz sin gritar. */
+  /* Etiqueta micro: estructura sin gritar. */
   .eyebrow {
     font-size: 10px;
     line-height: 1;
-    font-weight: 700;
-    letter-spacing: 0.14em;
+    font-weight: 600;
+    letter-spacing: 0.08em;
     text-transform: uppercase;
     color: var(--color-ink-faint);
   }
 
-  /* --- ENTRADA ESCALONADA -------------------------------------------
-     Las superficies no aparecen de golpe: suben y se enfocan. */
+  /* --- ENTRADA ---------------------------------------------------------
+     Corta y sin desenfoque. Antes las superficies entraban desde 14 px con
+     un `blur(6px)`: medio segundo de interfaz borrosa en cada navegación. */
   .rise {
-    animation: rise 0.55s var(--ease-out-soft) both;
+    animation: rise 0.28s var(--ease-out-soft) both;
   }
 
   @keyframes rise {
-    from {
-      opacity: 0;
-      transform: translateY(14px) scale(0.985);
-      filter: blur(6px);
-    }
-    to {
-      opacity: 1;
-      transform: none;
-      filter: blur(0);
-    }
-  }
-
-  /* --- CAMBIO DE PÁGINA ----------------------------------------------
-     Entrada corta y sin desplazamiento lateral: navegar debe sentirse
-     inmediato, no como una diapositiva. */
-  .page-enter {
-    animation: page-enter 0.42s var(--ease-out-soft) both;
-  }
-
-  @keyframes page-enter {
-    from { opacity: 0; transform: translateY(8px); }
+    from { opacity: 0; transform: translateY(6px); }
     to   { opacity: 1; transform: none; }
   }
 
-  /* --- DÍGITO QUE GIRA ------------------------------------------------ */
-  /* El giro del dígito nunca llega a opacidad cero: los segundos cambian cada
-     segundo y, con una entrada desde invisible, la cifra pasaba media vida en
-     blanco y parecía un fallo de renderizado. */
+  .page-enter {
+    animation: page-enter 0.22s var(--ease-out-soft) both;
+  }
+
+  @keyframes page-enter {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+  }
+
+  /* Cambio de cifra en el reloj: un desplazamiento mínimo, sin rotación 3D
+     ni caída de opacidad. La cifra de los segundos cambia sesenta veces por
+     minuto y cualquier efecto vistoso ahí acaba siendo un parpadeo. */
   .digit-roll {
-    animation: digit-roll 0.26s var(--ease-out-soft);
+    animation: digit-roll 0.18s var(--ease-out-soft);
   }
 
   @keyframes digit-roll {
-    0%   { transform: translateY(-0.34em) rotateX(42deg); opacity: 0.35; }
-    100% { transform: none; opacity: 1; }
+    from { transform: translateY(-0.18em); opacity: 0.55; }
+    to   { transform: none; opacity: 1; }
   }
 
-  /* Latido del pulso en vivo. */
-  .pulse-ring {
-    animation: pulse-ring 2.4s var(--ease-out-soft) infinite;
+  /* Latido del punto de estado: discreto, no un radar. */
+  .pulse-dot {
+    animation: pulse-dot 2.6s var(--ease-out-soft) infinite;
   }
 
-  @keyframes pulse-ring {
-    0%   { transform: scale(1);   opacity: 0.6; }
-    70%  { transform: scale(2.4); opacity: 0; }
-    100% { transform: scale(2.4); opacity: 0; }
+  @keyframes pulse-dot {
+    0%   { transform: scale(1);   opacity: 0.45; }
+    70%  { transform: scale(1.9); opacity: 0; }
+    100% { transform: scale(1.9); opacity: 0; }
+  }
+
+  /* Acuse de fichaje registrado: un solo pulso del anillo. */
+  .ring-confirm {
+    animation: ring-confirm 0.5s var(--ease-out-soft);
+  }
+
+  @keyframes ring-confirm {
+    0%   { transform: scale(1); }
+    38%  { transform: scale(1.035); }
+    100% { transform: scale(1); }
   }
 }
 
-/* Quien pide menos movimiento recibe la interfaz quieta, pero completa:
-   la aurora se congela en una posición bonita, no desaparece. */
+/* Quien pide menos movimiento recibe la interfaz quieta y completa. */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
