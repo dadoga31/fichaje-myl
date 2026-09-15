@@ -9,8 +9,9 @@ dev-dist/
 coverage/
 dist-demo/
 
-# Firebase
-.firebase/
-firebase-debug.log
-firestore-debug.log
-*-firebase-adminsdk-*.json
+
+
+# Copias y sellos generados en el equipo del cliente
+/datos/
+*.dump.enc
+clave-firma.pem

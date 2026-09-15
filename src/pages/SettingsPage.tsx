@@ -1,9 +1,20 @@
-import { useEffect, useState } from 'react'
-import { Building2, Database, MapPin, RotateCcw, ShieldCheck, Smartphone } from 'lucide-react'
+import { useEffect, useState, type FormEvent } from 'react'
+import { Building2, Database, KeyRound, MapPin, RotateCcw, ShieldCheck, Smartphone } from 'lucide-react'
 import { useSession } from '../context/SessionContext'
 import { PageHeader } from '../components/Layout'
-import { Badge, Button, MicroLabel, Notice, Panel, PanelHeader, Tabs, cx } from '../components/ui'
-import { updateGeoConsent } from '../lib/api'
+import {
+  Badge,
+  Button,
+  Field,
+  MicroLabel,
+  Notice,
+  Panel,
+  PanelHeader,
+  Tabs,
+  cx,
+  inputClass,
+} from '../components/ui'
+import { changePassword, updateGeoConsent } from '../lib/api'
 import { resetDemo } from '../lib/demo'
 import { ROLE_LABEL } from '../lib/types'
 
@@ -15,6 +26,42 @@ export function SettingsPage() {
   const [busy, setBusy] = useState(false)
   const [installEvent, setInstallEvent] = useState<Event | null>(null)
   const [tab, setTab] = useState<'cuenta' | 'privacidad' | 'app'>('cuenta')
+
+  // Cambio de contraseña. Hasta ahora la aplicación repartía contraseñas
+  // provisionales y no ofrecía ninguna forma de cambiarlas, lo que obligaba a
+  // hacerlo desde la consola del servidor: inservible para una plantilla.
+  const [actual, setActual] = useState('')
+  const [nueva, setNueva] = useState('')
+  const [repetida, setRepetida] = useState('')
+  const [avisoClave, setAvisoClave] = useState<{ tono: 'ok' | 'error'; texto: string } | null>(null)
+  const [cambiando, setCambiando] = useState(false)
+
+  async function enviarCambio(evento: FormEvent) {
+    evento.preventDefault()
+    if (nueva !== repetida) {
+      setAvisoClave({ tono: 'error', texto: 'Las dos contraseñas nuevas no coinciden.' })
+      return
+    }
+    setCambiando(true)
+    setAvisoClave(null)
+    try {
+      await changePassword(actual, nueva)
+      setActual('')
+      setNueva('')
+      setRepetida('')
+      setAvisoClave({
+        tono: 'ok',
+        texto: 'Contraseña cambiada. Se han cerrado sus sesiones en otros dispositivos.',
+      })
+    } catch (error) {
+      setAvisoClave({
+        tono: 'error',
+        texto: error instanceof Error ? error.message : 'No se ha podido cambiar.',
+      })
+    } finally {
+      setCambiando(false)
+    }
+  }
 
   // La instalación solo puede ofrecerse cuando el navegador lanza el evento;
   // en iOS no existe y se instala desde «Compartir → Añadir a inicio».
@@ -106,6 +153,61 @@ export function SettingsPage() {
           </div>
         </Panel>
 
+        {/* --- Contraseña -------------------------------------------------- */}
+        {!isDemo && (
+          <Panel className="h-fit">
+            <PanelHeader title="Su contraseña" />
+            <form onSubmit={(e) => void enviarCambio(e)} className="flex flex-col gap-2.5 px-4 py-3">
+              <Field label="Contraseña actual" htmlFor="clave-actual">
+                <input
+                  id="clave-actual"
+                  type="password"
+                  autoComplete="current-password"
+                  className={inputClass}
+                  value={actual}
+                  onChange={(e) => setActual(e.target.value)}
+                />
+              </Field>
+              <Field
+                label="Contraseña nueva"
+                htmlFor="clave-nueva"
+                hint="Mínimo 10 caracteres."
+                required
+              >
+                <input
+                  id="clave-nueva"
+                  type="password"
+                  autoComplete="new-password"
+                  required
+                  minLength={10}
+                  className={inputClass}
+                  value={nueva}
+                  onChange={(e) => setNueva(e.target.value)}
+                />
+              </Field>
+              <Field label="Repita la nueva" htmlFor="clave-repetida" required>
+                <input
+                  id="clave-repetida"
+                  type="password"
+                  autoComplete="new-password"
+                  required
+                  className={inputClass}
+                  value={repetida}
+                  onChange={(e) => setRepetida(e.target.value)}
+                />
+              </Field>
+
+              {avisoClave && (
+                <Notice tone={avisoClave.tono === 'ok' ? 'ok' : 'error'}>{avisoClave.texto}</Notice>
+              )}
+
+              <Button type="submit" variant="primary" size="sm" disabled={cambiando}>
+                <KeyRound size={14} />
+                {cambiando ? 'Cambiando…' : 'Cambiar contraseña'}
+              </Button>
+            </form>
+          </Panel>
+        )}
       </div>
 
       <div
