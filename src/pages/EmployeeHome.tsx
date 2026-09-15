@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
+import { AlertTriangle } from 'lucide-react'
 import { useSession } from '../context/SessionContext'
 import { useAmbient } from '../context/AmbientContext'
 import { PunchPanel } from '../components/PunchPanel'
-import { Spinner } from '../components/ui'
+import { Button, Spinner } from '../components/ui'
 import { useOnlineStatus } from '../hooks/useOnlineStatus'
 import { useGeolocation } from '../hooks/useGeolocation'
 import { getEntries, punch, subscribeToChanges } from '../lib/api'
@@ -23,6 +24,11 @@ export function EmployeeHome() {
   const [entries, setEntries] = useState<TimeEntry[]>([])
   const [queued, setQueued] = useState<QueuedPunch[]>([])
   const [loading, setLoading] = useState(true)
+  // Si la carga falla, hay que DECIRLO. Antes la promesa se rompía en
+  // silencio, setLoading(false) no llegaba a ejecutarse y la pantalla se
+  // quedaba girando indefinidamente: el peor fallo posible aquí, porque
+  // quien tiene que fichar no sabe si debe esperar o si algo va mal.
+  const [fallo, setFallo] = useState<string | null>(null)
 
   const profile = session!.profile
   const company = session!.company
@@ -31,8 +37,14 @@ export function EmployeeHome() {
   const today = useMemo(() => toISODate(new Date()), [])
 
   const load = useCallback(async () => {
-    setEntries(await getEntries(profile.id, today, today))
-    setLoading(false)
+    try {
+      setEntries(await getEntries(profile.id, today, today))
+      setFallo(null)
+    } catch (error) {
+      setFallo(error instanceof Error ? error.message : 'No se ha podido cargar su jornada.')
+    } finally {
+      setLoading(false)
+    }
   }, [profile.id, today])
 
   useEffect(() => {
@@ -92,6 +104,30 @@ export function EmployeeHome() {
     return (
       <div className="flex h-full items-center justify-center gap-2 text-sm text-slate-500">
         <Spinner /> Cargando su jornada…
+      </div>
+    )
+  }
+
+  if (fallo) {
+    return (
+      <div className="flex h-full items-center justify-center px-5">
+        <div className="glass w-full max-w-sm rounded-[16px] px-5 py-5 text-center">
+          <AlertTriangle size={20} className="mx-auto text-amber-600" />
+          <p className="mt-2.5 text-[14px] font-semibold text-ink">
+            No se ha podido cargar su jornada
+          </p>
+          <p className="mt-1.5 text-[12.5px] leading-relaxed text-ink-soft">{fallo}</p>
+          <Button
+            className="mt-4 w-full"
+            variant="primary"
+            onClick={() => {
+              setLoading(true)
+              void load()
+            }}
+          >
+            Reintentar
+          </Button>
+        </div>
       </div>
     )
   }
