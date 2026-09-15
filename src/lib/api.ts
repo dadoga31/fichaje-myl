@@ -2,33 +2,34 @@
  * Capa de acceso a datos. Un único punto por el que pasan todas las lecturas
  * y escrituras, con dos implementaciones intercambiables:
  *
- *   · Firebase (producción): Firestore con Security Rules, Auth y sincronización
- *     en tiempo real.
+ *   · Servidor (producción): la API del servidor instalado en la empresa.
  *   · Demo (VITE_DEMO=true): backend en memoria con las mismas reglas, para
- *     enseñar la interfaz sin desplegar nada.
+ *     enseñar la interfaz sin instalar nada.
  *
  * Los componentes no saben cuál está activa.
  */
-import { isConfigured, isDemoMode } from './firebase'
 import { demoApi, subscribeDemo } from './demo'
 import {
-  fbCreateRequest,
-  fbGetAudits,
-  fbGetDailySummaries,
-  fbGetEntries,
-  fbGetRawEntries,
-  fbGetRequests,
-  fbGetSession,
-  fbGetStaffLive,
-  fbListProfiles,
-  fbLogAccess,
-  fbPunch,
-  fbReviewRequest,
-  fbSignIn,
-  fbSignOut,
-  fbSubscribe,
-  fbUpdateGeoConsent,
-} from './firestore'
+  ErrorDeRed,
+  srvCambiarContrasena,
+  srvCreateRequest,
+  srvGetAudits,
+  srvGetDailySummaries,
+  srvGetEntries,
+  srvGetRawEntries,
+  srvGetRequests,
+  srvGetSession,
+  srvGetStaffLive,
+  srvListProfiles,
+  srvLogAccess,
+  srvPunch,
+  srvReviewRequest,
+  srvSignIn,
+  srvSignOut,
+  srvSubscribe,
+  srvUpdateGeoConsent,
+  srvVerifyLedger,
+} from './servidor'
 import type {
   Company,
   CorrectionRequest,
@@ -47,12 +48,15 @@ export interface SessionUser {
 }
 
 /**
- * La sesión activa, cacheada.
+ * Modo demostración. Explícito: exige compilar con VITE_DEMO=true.
  *
- * Firestore necesita saber la empresa y el rol para casi todas las consultas,
- * y pedirlos en cada llamada multiplicaría las lecturas facturables. Se
- * refresca en cada `getSession()`, que es justo cuando puede haber cambiado.
+ * En la versión autoalojada ya no existe la pantalla de «falta configurar»:
+ * la aplicación la sirve su propio servidor, así que si se abre, el servidor
+ * está ahí por definición. Esa pantalla dejó de tener sentido al desaparecer
+ * la configuración que había que introducir en el cliente.
  */
+export const isDemoMode = import.meta.env.VITE_DEMO === 'true'
+
 let sesion: SessionUser | null = null
 
 function requiereSesion(): SessionUser {
@@ -64,10 +68,6 @@ function requiereSesion(): SessionUser {
 // Sesión
 // ---------------------------------------------------------------------
 export async function getSession(): Promise<SessionUser | null> {
-  // Sin backend ni demo no hay nada que consultar: preguntar por la sesión
-  // lanzaría una excepción justo en la pantalla que explica cómo configurarlo.
-  if (!isConfigured && !isDemoMode) return null
-
   if (isDemoMode) {
     const userId = demoApi.getSessionUserId()
     if (!userId) return null
@@ -77,12 +77,12 @@ export async function getSession(): Promise<SessionUser | null> {
     return sesion
   }
 
-  sesion = await fbGetSession()
+  sesion = await srvGetSession()
   return sesion
 }
 
 export async function signInWithPassword(email: string, password: string): Promise<void> {
-  await fbSignIn(email, password)
+  await srvSignIn(email, password)
 }
 
 export function signInDemo(userId: string): Profile {
@@ -95,7 +95,13 @@ export async function signOut(): Promise<void> {
     demoApi.signOut()
     return
   }
-  await fbSignOut()
+  await srvSignOut()
+}
+
+/** Cambio de contraseña. Cierra el resto de sesiones de esa persona. */
+export async function changePassword(actual: string, nueva: string): Promise<void> {
+  if (isDemoMode) throw new Error('No disponible en el modo de demostración.')
+  await srvCambiarContrasena(actual, nueva)
 }
 
 // ---------------------------------------------------------------------
@@ -109,46 +115,16 @@ export async function punch(
 ): Promise<TimeEntry | void> {
   if (isDemoMode) return demoApi.punch(userId, type, geo, opts.offline)
 
-  const { profile, company } = requiereSesion()
-
-  // La máquina de estados se comprueba aquí porque las reglas de Firestore no
-  // pueden consultar "el último fichaje" sin encarecer cada escritura. Lo que
-  // SÍ garantizan las reglas es lo que importa legalmente: que el asiento sea
-  // tuyo, esté sellado por el servidor y no se pueda tocar después.
-  const hoy = new Date()
-  hoy.setDate(hoy.getDate() - 1)
-  const recientes = await fbGetEntries(
-    profile.id,
-    hoy.toISOString().slice(0, 10),
-    new Date().toISOString().slice(0, 10),
-  )
-  const ultimo = recientes[recientes.length - 1]
-  const estado = ultimo ? deriveEstado(ultimo.entry_type, ultimo.event_at) : 'off'
-
-  const permitido: Record<string, EntryType[]> = {
-    off: ['clock_in'],
-    working: ['break_start', 'clock_out'],
-    break: ['break_end', 'clock_out'],
-  }
-  if (!permitido[estado].includes(type)) {
-    throw new Error('Esa acción no es posible desde su estado actual.')
-  }
-
-  await fbPunch(profile, company, type, geo, opts)
-}
-
-/** Estado a partir del último asiento; 20 h sin cerrar se consideran olvido. */
-function deriveEstado(tipo: EntryType, cuando: string): 'working' | 'break' | 'off' {
-  const horas = (Date.now() - new Date(cuando).getTime()) / 3_600_000
-  if (horas > 20) return 'off'
-  if (tipo === 'clock_in' || tipo === 'break_end') return 'working'
-  if (tipo === 'break_start') return 'break'
-  return 'off'
+  // La transición válida la comprueba `public.punch()` en la base de datos,
+  // dentro de la misma transacción que escribe el asiento. Comprobarla
+  // además aquí —como hacía la versión anterior— añadía una consulta por
+  // fichaje y abría la puerta a que ambas comprobaciones discreparan.
+  return srvPunch(type, geo, opts)
 }
 
 export async function getEntries(userId: string, from: string, to: string): Promise<TimeEntry[]> {
   if (isDemoMode) return demoApi.getEntries(userId, from, to)
-  return fbGetEntries(userId, from, to)
+  return srvGetEntries(userId, from, to)
 }
 
 /** Incluye los asientos sustituidos y anulados: vista de Inspección. */
@@ -158,7 +134,7 @@ export async function getRawEntries(
   to: string,
 ): Promise<TimeEntry[]> {
   if (isDemoMode) return demoApi.getRawEntries(userId, from, to)
-  return fbGetRawEntries(userId, from, to)
+  return srvGetRawEntries(userId, from, to)
 }
 
 export async function getDailySummaries(
@@ -167,7 +143,7 @@ export async function getDailySummaries(
   to: string,
 ): Promise<DailySummary[]> {
   if (isDemoMode) return demoApi.getDailySummaries(userId, from, to)
-  return fbGetDailySummaries(userId, from, to)
+  return srvGetDailySummaries(userId, from, to)
 }
 
 // ---------------------------------------------------------------------
@@ -175,12 +151,12 @@ export async function getDailySummaries(
 // ---------------------------------------------------------------------
 export async function getStaffLive(): Promise<StaffLiveStatus[]> {
   if (isDemoMode) return demoApi.getStaffLive()
-  return fbGetStaffLive(requiereSesion().profile.company_id)
+  return srvGetStaffLive()
 }
 
 export async function listProfiles(): Promise<Profile[]> {
   if (isDemoMode) return demoApi.listProfiles()
-  return fbListProfiles(requiereSesion().profile.company_id)
+  return srvListProfiles()
 }
 
 export async function getRequests(scope: {
@@ -188,11 +164,7 @@ export async function getRequests(scope: {
   companyWide?: boolean
 }): Promise<CorrectionRequest[]> {
   if (isDemoMode) return demoApi.getRequests(scope)
-  return fbGetRequests({
-    userId: scope.userId,
-    companyWide: scope.companyWide,
-    companyId: requiereSesion().profile.company_id,
-  })
+  return srvGetRequests(!scope.companyWide)
 }
 
 export async function createRequest(
@@ -209,7 +181,7 @@ export async function createRequest(
     demoApi.createRequest(userId, input)
     return
   }
-  await fbCreateRequest(requiereSesion().profile, input)
+  await srvCreateRequest(input)
 }
 
 export async function reviewRequest(
@@ -222,16 +194,7 @@ export async function reviewRequest(
     demoApi.reviewRequest(reviewerId, requestId, approve, note)
     return
   }
-
-  const { profile } = requiereSesion()
-  const solicitudes = await fbGetRequests({
-    companyWide: true,
-    companyId: profile.company_id,
-  })
-  const solicitud = solicitudes.find((r) => r.id === requestId)
-  if (!solicitud) throw new Error('Solicitud no encontrada.')
-
-  await fbReviewRequest(profile, solicitud, approve, note)
+  await srvReviewRequest(requestId, approve, note)
 }
 
 export async function getAudits(filter: {
@@ -240,7 +203,7 @@ export async function getAudits(filter: {
 }): Promise<TimeEntryAudit[]> {
   if (isDemoMode) return demoApi.getAudits(filter)
 
-  const todos = await fbGetAudits(requiereSesion().profile.company_id)
+  const todos = await srvGetAudits()
   if (filter.companyWide || !filter.entryIds) return todos
   const buscados = new Set(filter.entryIds)
   return todos.filter((a) => buscados.has(a.entry_id))
@@ -248,7 +211,7 @@ export async function getAudits(filter: {
 
 export async function getCorrectionAudits(): Promise<TimeEntryAudit[]> {
   if (isDemoMode) return demoApi.getCorrectionAudits()
-  return fbGetAudits(requiereSesion().profile.company_id)
+  return srvGetAudits()
 }
 
 export async function updateGeoConsent(userId: string, consent: boolean): Promise<void> {
@@ -259,7 +222,7 @@ export async function updateGeoConsent(userId: string, consent: boolean): Promis
     })
     return
   }
-  await fbUpdateGeoConsent(userId, consent)
+  await srvUpdateGeoConsent(consent)
 }
 
 /** Deja constancia de quién exporta o consulta qué. */
@@ -273,31 +236,39 @@ export async function logAccess(input: {
   periodEnd?: string
 }): Promise<void> {
   if (isDemoMode) return
-  await fbLogAccess(input)
+  // La empresa y el rol los deduce el servidor de la sesión: aceptarlos del
+  // cliente permitiría anotar un acceso a nombre de otra persona.
+  await srvLogAccess({
+    action: input.action,
+    subjectUserId: input.subjectUserId,
+    periodStart: input.periodStart,
+    periodEnd: input.periodEnd,
+  })
 }
 
 /**
- * Prueba de integridad.
+ * Prueba de integridad del libro.
  *
- * En PostgreSQL existía una cadena de hashes encadenados que delataba
- * cualquier manipulación directa en base de datos. En Firestore esa cadena
- * exigiría una Cloud Function (plan Blaze) para calcularse en servidor: hecha
- * en el cliente no probaría nada, porque el cliente es justo lo que no se
- * puede dar por fiable.
- *
- * Lo que la sustituye está en `firestore.rules`: ningún camino permite
- * modificar ni borrar un asiento, y `recorded_at` lo sella el servidor. La
- * comprobación queda documentada en docs/CUMPLIMIENTO.md.
+ * Devuelve cuántos asientos tienen el sello descuadrado. En una instalación
+ * en el propio equipo del cliente esta comprobación es la pieza central: el
+ * administrador de ese PC SÍ puede abrir PostgreSQL y editar una fila, pero
+ * no puede recalcular la cadena sin que esto lo delate.
  */
 export async function verifyLedger(): Promise<number> {
-  return 0
+  if (isDemoMode) return 0
+  return srvVerifyLedger()
+}
+
+/** Distingue un corte de red de un rechazo del servidor: decide si se encola. */
+export function esFalloDeRed(error: unknown): boolean {
+  return error instanceof ErrorDeRed || (error as Error)?.name === 'ErrorDeRed'
 }
 
 // ---------------------------------------------------------------------
 // Sincronización en tiempo real
 // ---------------------------------------------------------------------
 export function subscribeToChanges(
-  tables: Array<'time_entries' | 'correction_requests' | 'profiles'>,
+  _tables: Array<'time_entries' | 'correction_requests' | 'profiles'>,
   onChange: () => void,
 ): () => void {
   if (isDemoMode) {
@@ -305,13 +276,8 @@ export function subscribeToChanges(
     // navegador. Entre dispositivos distintos es imposible sin backend.
     return subscribeDemo(onChange)
   }
-
   if (!sesion) return () => {}
-  const { profile } = sesion
-
-  // Quien solo puede ver lo suyo no necesita escuchar toda la empresa: menos
-  // lecturas facturables y ningún dato de más viajando al dispositivo.
-  const soloPropios = profile.role === 'employee' && !tables.includes('correction_requests')
-
-  return fbSubscribe(profile.company_id, profile.id, soloPropios, onChange)
+  return srvSubscribe(onChange)
 }
+
+export { requiereSesion }

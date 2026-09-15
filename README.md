@@ -15,33 +15,55 @@ Cuando alguien se equivoca, no se sobrescribe nada — se añade un asiento nuev
 que sustituye al anterior, y ambos quedan almacenados con el motivo, el autor y
 el momento de la rectificación.
 
-Lo garantizan las **Security Rules de Firestore**, que se evalúan en el
-servidor de Google y no se pueden esquivar desde el cliente:
+Lo garantiza **PostgreSQL**, no el código de la aplicación:
 
-1. **No existe ninguna regla `update` ni `delete`** sobre `time_entries`. No es
-   que esté prohibido modificar un fichaje: es que la operación no existe. Sin
-   regla, Firestore deniega.
-2. **La hora de grabación la sella el servidor** (`request.time`), no el
-   dispositivo: un móvil con la hora cambiada no puede antedatar nada.
-3. **Aislamiento por empresa y por persona**, con rol de Inspección de solo
-   lectura.
+1. **Los permisos de `UPDATE` y `DELETE` sobre `time_entries` están revocados**,
+   y un disparador incondicional bloquea la operación incluso para el dueño de
+   la tabla. La aplicación atiende a la plantilla con un rol que sencillamente
+   no puede alterar un fichaje.
+2. **Cada asiento se encadena al anterior** con `SHA-256(hash_anterior ||
+   carga)`. Manipular una fila por acceso directo a la base de datos rompe la
+   cadena, y `verify_ledger()` lo delata señalando el asiento exacto.
+3. **La hora de grabación la pone el servidor**, no el dispositivo.
+4. **Aislamiento por empresa y por persona** con Row Level Security, y rol de
+   Inspección de solo lectura.
+
+La cadena de hashes es la pieza que hace defendible instalar esto en el equipo
+del propio cliente: ahí el administrador de la máquina sí puede abrir
+PostgreSQL, pero no puede hacerlo sin dejar rastro.
 
 Detalle completo en [`docs/CUMPLIMIENTO.md`](docs/CUMPLIMIENTO.md).
 
 ---
 
-## Puesta en marcha
+## Dónde vive
 
-```bash
-npm install
-cp .env.example .env.local     # y rellene la configuración de Firebase
-npm run dev                    # http://localhost:5173
+En el **PC de la empresa**. No hay nube: los fichajes se escriben y se quedan
+en el disco de ese equipo. La plantilla llega desde su móvil, dentro y fuera de
+la oficina, a través de un túnel de Cloudflare que publica la aplicación **sin
+abrir ningún puerto** en el equipo.
+
+```
+  Móvil / PC  ──HTTPS──▶  Cloudflare  ──túnel──▶   PC DE LA OFICINA
+                                                   ├── aplicación (PWA + API)
+                                                   └── PostgreSQL  ← los datos
 ```
 
-**Sin credenciales la aplicación no arranca**: muestra una pantalla de
-configuración y bloquea el acceso. Es deliberado — un registro de jornada que
-vive en el `localStorage` de cada móvil no prueba nada ante una Inspección, así
-que es preferible que nadie entre a que la plantilla fiche contra el navegador.
+Instalación completa en **[`docs/DESPLIEGUE.md`](docs/DESPLIEGUE.md)**.
+
+```bash
+cp .env.example .env     # rellene contraseñas y token del túnel
+docker compose up -d
+docker compose exec aplicacion node src/migrar.js
+docker compose exec aplicacion node src/alta.js --empresa "Mi Empresa SL" --cif B12345678
+```
+
+### Desarrollo
+
+```bash
+npm install && npm run dev      # interfaz, contra el servidor en :3000
+cd servidor && npm install && npm start
+```
 
 Para ver la interfaz con datos de ejemplo, sin base de datos y sin valor legal:
 
@@ -49,41 +71,32 @@ Para ver la interfaz con datos de ejemplo, sin base de datos y sin valor legal:
 npm run dev:demo
 ```
 
-### Despliegue en producción
-
-Guía completa en **[`docs/DESPLIEGUE.md`](docs/DESPLIEGUE.md)**: preparar
-Firestore y Auth, desplegar las reglas, dar de alta la empresa y a las personas
-reales, y conectar Vercel.
-
-### Reglas de seguridad
-
-`firestore.rules` es **la garantía legal** de esta aplicación. Se despliega
-aparte del frontend:
-
-```bash
-npx firebase deploy --only firestore:rules,firestore:indexes
-```
-
-### Alta de la empresa y las personas
-
-```bash
-export GOOGLE_APPLICATION_CREDENTIALS=/ruta/clave-privada.json
-
-node scripts/alta-personas.mjs --empresa "Mi Empresa SL" --cif B12345678
-node scripts/alta-personas.mjs plantilla.csv --dry-run
-node scripts/alta-personas.mjs plantilla.csv
-```
-
 ### Pruebas de cumplimiento
 
 ```bash
-npm run test:rules
+psql -d fichaje_test -f servidor/sql/pruebas_cumplimiento.sql
 ```
 
-38 aserciones contra el emulador real de Firestore, cada una intentando
-saltarse activamente una barrera legal: modificar un fichaje como
-administración, antedatarlo, leer datos de otra empresa, aprobarse la propia
-rectificación, ascenderse a administrador…
+40 aserciones contra PostgreSQL, cada una intentando saltarse activamente una
+barrera legal: modificar un fichaje como administración, borrarlo como
+superusuario, antedatarlo, leer datos de otra empresa, aprobarse la propia
+rectificación… incluida la que más importa aquí: **manipular la base de datos
+por fuera de la aplicación y comprobar que la cadena de hashes lo detecta**.
+
+### Copias de seguridad
+
+No son opcionales: el registro debe conservarse cuatro años y vive en un solo
+equipo.
+
+```bash
+node src/respaldo.js --copia   # volcado cifrado, al disco local
+node src/respaldo.js --sello   # resumen firmado y fechado, para sacar fuera
+```
+
+La copia sirve para **restaurar**; el sello sirve para **probar**. El sello es
+un resumen diminuto con la cabeza de la cadena, firmado, pensado para salir de
+la oficina cada día: si alguien altera el registro, dejará de coincidir con lo
+que quedó sellado fuera.
 
 ---
 
@@ -154,9 +167,8 @@ que los reemplazaron, con su motivo y su autor, y exportación inmediata.
 ```
 src/
 ├── lib/
-│   ├── api.ts           Capa de datos: despacha a Firestore o al backend demo
-│   ├── firebase.ts      Inicialización y detección de configuración
-│   ├── firestore.ts     Adaptador de Firestore
+│   ├── api.ts           Capa de datos: despacha al servidor o al backend demo
+│   ├── servidor.ts      Cliente de la API del servidor de la empresa
 │   ├── demo.ts          Backend en memoria con las mismas reglas del servidor
 │   ├── offlineQueue.ts  Cola de fichajes sin conexión (IndexedDB)
 │   ├── time.ts          Cómputo de jornada, compartido por cliente y resúmenes
@@ -169,7 +181,7 @@ src/
 ```
 
 **Stack:** React 19 · TypeScript · Vite · Tailwind CSS v4 · vite-plugin-pwa ·
-Firebase (Firestore + Auth + Security Rules) · lucide-react.
+Fastify · PostgreSQL 16 · Docker · Cloudflare Tunnel.
 
 Los generadores de PDF y Excel se cargan bajo demanda: la pantalla de fichaje
 no arrastra medio megabyte de dependencias que casi nadie usa desde el móvil.
@@ -178,14 +190,15 @@ no arrastra medio megabyte de dependencias que casi nadie usa desde el móvil.
 
 ## Sincronización en tiempo real
 
-Cada fichaje llega empujado por Firestore: lo que una persona ficha aparece en
-el panel de quien supervisa en el mismo instante, sin recargar. La difusión
-respeta las Security Rules de cada suscriptor —la persona trabajadora solo
-recibe sus propios fichajes; administración, los de su empresa—, así que
-sincronizar no abre ningún agujero de privacidad.
+Lo que una persona ficha aparece en el panel de quien supervisa en el mismo
+instante, sin recargar. PostgreSQL emite un aviso con `NOTIFY` y el servidor lo
+reenvía por SSE a los navegadores conectados.
 
-Si el WebSocket se cae (un móvil que se duerme, una red inestable), un sondeo
-de 60 segundos recupera el estado sin que nadie tenga que recargar.
+Por ese canal viaja **solo** el identificador de la empresa y el de la persona
+afectada, nunca datos de jornada: el navegador que recibe el aviso vuelve a
+pedir lo que le corresponda, y esa petición pasa otra vez por la RLS. Difundir
+el contenido habría sido más rápido y habría abierto un camino por el que salen
+datos sin control de permisos.
 
 ---
 

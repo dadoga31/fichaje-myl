@@ -1,0 +1,76 @@
+# =====================================================================
+#  FICHAJE MyL — instalación en el PC de la empresa
+#
+#  Tres servicios y ninguna dependencia externa:
+#
+#    postgres     el libro de fichajes. Los datos viven en un volumen del
+#                 propio equipo y no salen de él.
+#    aplicacion   servidor + PWA. Escucha SOLO en 127.0.0.1.
+#    tunel        publica la aplicación en internet mediante una conexión
+#                 de SALIDA hacia Cloudflare. El equipo no abre ningún
+#                 puerto entrante: ni hay que tocar el router ni hace falta
+#                 IP fija, y no queda nada del PC expuesto a la red.
+#
+#  Arranque:   docker compose up -d
+#  Registro:   docker compose logs -f aplicacion
+# =====================================================================
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${PGDATABASE:-fichaje}
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD en .env}
+      # El cómputo de la jornada depende del huso de la empresa.
+      TZ: ${TZ:-Europe/Madrid}
+      # Fuerza la comparación de contraseñas con SCRAM, no con MD5.
+      POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256"
+    volumes:
+      - datos_postgres:/var/lib/postgresql/data
+    # Sin `ports:` a propósito: la base de datos NO se publica, ni siquiera
+    # en localhost. Solo la alcanza la aplicación por la red interna.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d ${PGDATABASE:-fichaje}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  aplicacion:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: 3000
+      TZ: ${TZ:-Europe/Madrid}
+      PGHOST: postgres
+      PGPORT: 5432
+      PGDATABASE: ${PGDATABASE:-fichaje}
+      PGUSER: ${PGUSER:-fichaje_app}
+      PGPASSWORD: ${PGPASSWORD:?defina PGPASSWORD en .env}
+      CLAVE_COPIAS: ${CLAVE_COPIAS}
+      RUTA_COPIAS: /datos/copias
+      RUTA_SELLOS: /datos/sellos
+    volumes:
+      - datos_respaldo:/datos
+    # Solo en localhost del propio PC: quien publica es el túnel. Así, aunque
+    # alguien esté dentro de la red de la oficina, no llega por su cuenta.
+    ports:
+      - "127.0.0.1:3000:3000"
+
+  tunel:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    depends_on:
+      - aplicacion
+    command: tunnel --no-autoupdate run --token ${TOKEN_TUNEL:?defina TOKEN_TUNEL en .env}
+    # Sin puertos: cloudflared abre la conexión hacia fuera, no la recibe.
+
+volumes:
+  datos_postgres:
+  datos_respaldo:

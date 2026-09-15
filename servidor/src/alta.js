@@ -1,17 +1,13 @@
 #!/usr/bin/env node
 /**
- * ALTA DE LA EMPRESA Y DE LAS PERSONAS EN FIREBASE
- *
- * Crea la cuenta de Firebase Auth y su perfil en Firestore de una sola vez.
- * Usa el Admin SDK, que se salta las Security Rules: por eso se ejecuta desde
- * SU equipo y nunca desde el navegador.
+ * ALTA DE LA EMPRESA Y DE LAS PERSONAS
  *
  *   # 1. Dar de alta la empresa (una sola vez)
- *   node scripts/alta-personas.mjs --empresa "Mi Empresa SL" --cif B12345678
+ *   node src/alta.js --empresa "Mi Empresa SL" --cif B12345678
  *
  *   # 2. Dar de alta a la plantilla
- *   node scripts/alta-personas.mjs plantilla.csv --dry-run
- *   node scripts/alta-personas.mjs plantilla.csv
+ *   node src/alta.js plantilla.csv --dry-run
+ *   node src/alta.js plantilla.csv
  *
  * Formato del CSV (cabecera obligatoria, separador coma):
  *   email,nombre,rol,numero_empleado,nif,horas_semana
@@ -20,19 +16,15 @@
  *
  * Roles: employee · manager · admin · inspector
  *
- * Requiere la clave de cuenta de servicio (Configuración del proyecto →
- * Cuentas de servicio → Generar nueva clave privada):
- *
- *   export GOOGLE_APPLICATION_CREDENTIALS=/ruta/clave-privada.json
- *
- * ⚠ Ese JSON es la llave maestra del proyecto. No lo suba al repositorio ni
- *   lo ponga en Vercel: aquí no hace ninguna falta.
+ * Se ejecuta EN EL PC donde vive la base de datos, con el usuario
+ * administrador de PostgreSQL. No hay ninguna vía para dar de alta personas
+ * desde el navegador, y es deliberado: crear cuentas es justo la operación
+ * con la que alguien podría fabricarse un perfil de administración.
  */
 import { readFileSync } from 'node:fs'
 import { randomBytes } from 'node:crypto'
-import { initializeApp, cert, applicationDefault } from 'firebase-admin/app'
-import { getAuth } from 'firebase-admin/auth'
-import { getFirestore, FieldValue } from 'firebase-admin/firestore'
+import pg from 'pg'
+import { hashearContrasena } from './sesiones.js'
 
 const ROLES = new Set(['employee', 'manager', 'admin', 'inspector'])
 const args = process.argv.slice(2)
@@ -43,27 +35,14 @@ function valorDe(bandera) {
   return i === -1 ? null : args[i + 1]
 }
 
-// --- Conexión ---------------------------------------------------------
-const rutaClave = process.env.GOOGLE_APPLICATION_CREDENTIALS
-if (!rutaClave) {
-  console.error(
-    'Falta GOOGLE_APPLICATION_CREDENTIALS.\n\n' +
-      '  Consola de Firebase → Configuración del proyecto → Cuentas de servicio\n' +
-      '  → Generar nueva clave privada, y después:\n\n' +
-      '  export GOOGLE_APPLICATION_CREDENTIALS=/ruta/clave-privada.json\n',
-  )
-  process.exit(1)
-}
-
-let credencial
-try {
-  credencial = cert(JSON.parse(readFileSync(rutaClave, 'utf8')))
-} catch {
-  credencial = applicationDefault()
-}
-initializeApp({ credential: credencial })
-const auth = getAuth()
-const db = getFirestore()
+const cliente = new pg.Client({
+  host: process.env.PGHOST ?? 'localhost',
+  port: Number(process.env.PGPORT ?? 5432),
+  user: process.env.PGUSER ?? 'postgres',
+  password: process.env.PGPASSWORD,
+  database: process.env.PGDATABASE ?? 'fichaje',
+})
+await cliente.connect()
 
 // --- Alta de la empresa ----------------------------------------------
 const nombreEmpresa = valorDe('--empresa')
@@ -74,49 +53,42 @@ if (nombreEmpresa) {
     process.exit(1)
   }
 
-  const ref = await db.collection('companies').add({
-    name: nombreEmpresa,
-    cif,
-    timezone: 'Europe/Madrid',
-    geolocation_policy: 'disabled',
-    geolocation_notice: null,
-    // La conservación legal mínima del Art. 34.9 ET. Las reglas impiden bajarla.
-    retention_years: 4,
-    weekly_hours: 40,
-    created_at: FieldValue.serverTimestamp(),
-  })
+  const { rows } = await cliente.query(
+    `insert into public.companies (name, cif) values ($1, $2) returning id`,
+    [nombreEmpresa, cif],
+  )
 
   console.log(`\n▸ Empresa creada.\n`)
-  console.log(`  company_id: ${ref.id}\n`)
+  console.log(`  company_id: ${rows[0].id}\n`)
   console.log('  Guárdelo: hace falta para dar de alta a las personas.')
   console.log('  Expórtelo antes del siguiente paso:\n')
-  console.log(`     export FICHAJE_COMPANY_ID=${ref.id}\n`)
+  console.log(`     export FICHAJE_COMPANY_ID=${rows[0].id}\n`)
+  await cliente.end()
   process.exit(0)
 }
 
 // --- Alta de personas -------------------------------------------------
-const csvPath = args.find((a) => !a.startsWith('--'))
+const csvPath = args.find((a) => !a.startsWith('--') && a.endsWith('.csv'))
 if (!csvPath) {
   console.error(
     'Uso:\n' +
-      '  node scripts/alta-personas.mjs --empresa "Mi Empresa SL" --cif B12345678\n' +
-      '  node scripts/alta-personas.mjs plantilla.csv [--dry-run]\n',
+      '  node src/alta.js --empresa "Mi Empresa SL" --cif B12345678\n' +
+      '  node src/alta.js plantilla.csv [--dry-run]\n',
   )
   process.exit(1)
 }
 
-// Con una sola empresa dada de alta se usa esa; con varias hay que elegir.
 let companyId = process.env.FICHAJE_COMPANY_ID ?? valorDe('--company-id')
 if (!companyId) {
-  const empresas = await db.collection('companies').get()
-  if (empresas.size === 1) {
-    companyId = empresas.docs[0].id
-    console.log(`▸ Empresa detectada: ${empresas.docs[0].data().name} (${companyId})`)
+  const { rows } = await cliente.query('select id, name from public.companies order by created_at')
+  if (rows.length === 1) {
+    companyId = rows[0].id
+    console.log(`▸ Empresa detectada: ${rows[0].name} (${companyId})`)
   } else {
     console.error(
-      `Hay ${empresas.size} empresas dadas de alta. Indique cuál:\n` +
+      `Hay ${rows.length} empresas dadas de alta. Indique cuál:\n` +
         '  export FICHAJE_COMPANY_ID=<id>\n\n' +
-        empresas.docs.map((d) => `  ${d.id}  ${d.data().name}`).join('\n'),
+        rows.map((r) => `  ${r.id}  ${r.name}`).join('\n'),
     )
     process.exit(1)
   }
@@ -206,6 +178,7 @@ if (dryRun) {
     console.log(`  ${p.email.padEnd(34)} ${p.role.padEnd(10)} ${p.full_name}`)
   }
   console.log('\n--dry-run: no se ha creado nada.\n')
+  await cliente.end()
   process.exit(0)
 }
 
@@ -217,7 +190,18 @@ if (!personas.some((p) => p.role === 'admin')) {
 }
 
 /** Contraseña inicial legible pero no adivinable; se cambia al primer acceso. */
-const contrasenaInicial = () => randomBytes(9).toString('base64url').replace(/[-_]/g, 'x')
+function contrasenaInicial() {
+  const abc = 'abcdefghijkmnpqrstuvwxyz'
+  const num = '23456789'
+  const b = randomBytes(24)
+  let p = ''
+  for (let i = 0; i < 4; i++) p += abc[b[i] % abc.length]
+  p += '-'
+  for (let i = 4; i < 8; i++) p += abc[b[i] % abc.length]
+  p += '-'
+  for (let i = 8; i < 11; i++) p += num[b[i] % num.length]
+  return p
+}
 
 const credenciales = []
 let creadas = 0
@@ -226,50 +210,55 @@ let fallidas = 0
 for (const p of personas) {
   const password = contrasenaInicial()
   try {
-    const user = await auth.createUser({
-      email: p.email,
-      password,
-      displayName: p.full_name || undefined,
-      emailVerified: true, // las da de alta la empresa, no hay autoregistro
-    })
+    // El perfil NO se crea aquí. Lo crea el disparador
+    // `on_auth_user_created` a partir de los metadatos, que es el camino ya
+    // cubierto por la batería de cumplimiento. Duplicarlo en JavaScript
+    // habría dado dos formas de dar de alta y solo una probada.
+    await cliente.query('begin')
 
-    // El perfil se crea con el MISMO id que la cuenta: las reglas de seguridad
-    // resuelven el rol leyendo profiles/{uid}, así que deben coincidir.
-    await db.collection('profiles').doc(user.uid).set({
-      company_id: companyId,
-      full_name: p.full_name || p.email.split('@')[0],
-      email: p.email,
-      role: p.role,
-      employee_number: p.employee_number || null,
-      nif: p.nif || null,
-      contract_hours: Number(p.contract_hours),
-      geo_consent: false,
-      geo_consent_at: null,
-      active: true,
-      hired_on: new Date().toISOString().slice(0, 10),
-      created_at: FieldValue.serverTimestamp(),
-    })
+    await cliente.query(
+      `insert into auth.users (email, password_hash, must_change_password, raw_user_meta_data)
+       values ($1, $2, true, $3::jsonb)`,
+      [
+        p.email,
+        await hashearContrasena(password),
+        JSON.stringify({
+          company_id: companyId,
+          role: p.role,
+          full_name: p.full_name || p.email.split('@')[0],
+          employee_number: p.employee_number || null,
+          nif: p.nif || null,
+          contract_hours: p.contract_hours,
+        }),
+      ],
+    )
 
+    await cliente.query('commit')
     creadas++
     credenciales.push({ email: p.email, password })
     console.log(`  ✓ ${p.email}`)
   } catch (error) {
+    await cliente.query('rollback').catch(() => {})
     fallidas++
-    const codigo = error?.errorInfo?.code ?? error?.code ?? ''
-    const detalle = codigo === 'auth/email-already-exists'
-      ? 'ya existe una cuenta con ese correo'
-      : (error?.message ?? String(error)).slice(0, 120)
-    console.error(`  ✗ ${p.email} — ${detalle}`)
+    // El código 23505 es «clave duplicada» a secas: puede ser el correo, pero
+    // también el número de empleado, que es único por empresa. Decir siempre
+    // «ese correo ya existe» manda a buscar el problema donde no está.
+    const detalle =
+      error.code === '23505'
+        ? `ya existe un registro con ese valor (${error.constraint ?? 'clave única'})`
+        : error.message
+    console.error(`  ✗ ${p.email} — ${String(detalle).slice(0, 120)}`)
   }
 }
 
 console.log(`\n▸ ${creadas} creada(s), ${fallidas} con error\n`)
 
 if (credenciales.length > 0) {
-  console.log('CONTRASEÑAS INICIALES — repártalas por un canal seguro')
-  console.log('y pida que las cambien en el primer acceso:\n')
+  console.log('CONTRASEÑAS INICIALES — repártalas por un canal seguro.')
+  console.log('La aplicación obliga a cambiarlas en el primer acceso.\n')
   for (const c of credenciales) console.log(`  ${c.email.padEnd(34)} ${c.password}`)
   console.log('\nEstas contraseñas NO se pueden volver a consultar: guárdelas ahora.\n')
 }
 
+await cliente.end()
 process.exit(fallidas > 0 ? 1 : 0)
