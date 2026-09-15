@@ -1,44 +1,30 @@
 {
   "indexes": [
     {
+      "_comentario": "Jornada de una persona en un rango de fechas: pantalla de fichaje, historial e informes individuales.",
       "collectionGroup": "time_entries",
       "queryScope": "COLLECTION",
       "fields": [
         { "fieldPath": "user_id", "order": "ASCENDING" },
-        { "fieldPath": "work_date", "order": "ASCENDING" },
-        { "fieldPath": "event_at", "order": "ASCENDING" }
+        { "fieldPath": "work_date", "order": "ASCENDING" }
       ]
     },
     {
+      "_comentario": "Plantilla en vivo y vista de Inspección: toda la empresa en un rango de fechas.",
       "collectionGroup": "time_entries",
       "queryScope": "COLLECTION",
       "fields": [
         { "fieldPath": "company_id", "order": "ASCENDING" },
-        { "fieldPath": "event_at", "order": "DESCENDING" }
+        { "fieldPath": "work_date", "order": "ASCENDING" }
       ]
     },
     {
+      "_comentario": "Registro de auditoría: últimos asientos grabados en la empresa, del más reciente al más antiguo.",
       "collectionGroup": "time_entries",
       "queryScope": "COLLECTION",
       "fields": [
-        { "fieldPath": "user_id", "order": "ASCENDING" },
-        { "fieldPath": "event_at", "order": "DESCENDING" }
-      ]
-    },
-    {
-      "collectionGroup": "correction_requests",
-      "queryScope": "COLLECTION",
-      "fields": [
         { "fieldPath": "company_id", "order": "ASCENDING" },
-        { "fieldPath": "created_at", "order": "DESCENDING" }
-      ]
-    },
-    {
-      "collectionGroup": "correction_requests",
-      "queryScope": "COLLECTION",
-      "fields": [
-        { "fieldPath": "user_id", "order": "ASCENDING" },
-        { "fieldPath": "created_at", "order": "DESCENDING" }
+        { "fieldPath": "recorded_at", "order": "DESCENDING" }
       ]
     }
   ],

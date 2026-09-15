@@ -251,8 +251,12 @@ async function entradasDe(userId: string, from: string, to: string): Promise<Tim
     where('work_date', '>=', from),
     where('work_date', '<=', to),
   )
-  const snap = await getDocs(q)
-  return snap.docs.map(aTimeEntry)
+  try {
+    const snap = await getDocs(q)
+    return snap.docs.map(aTimeEntry)
+  } catch (error) {
+    throw new Error(traducirError(error))
+  }
 }
 
 export async function fbGetEntries(userId: string, from: string, to: string): Promise<TimeEntry[]> {
@@ -632,6 +636,16 @@ function traducirError(error: unknown): string {
   }
   if (code === 'unavailable') {
     return 'Sin conexión con el servidor. El fichaje se guardará y se enviará al recuperarla.'
+  }
+  // Índice sin desplegar. Le pasa a quien publica las reglas desde la consola
+  // y olvida que los índices van aparte; el mensaje de Firestore es un muro de
+  // texto en inglés con un enlace enterrado, así que se traduce.
+  if (code === 'failed-precondition' || /requires an index/i.test(mensaje)) {
+    return (
+      'Faltan los índices de la base de datos. Despliéguelos con ' +
+      '«npx firebase deploy --only firestore:indexes», o abra el enlace que ' +
+      'Firestore imprime en la consola del navegador para crearlos uno a uno.'
+    )
   }
   return mensaje
 }
