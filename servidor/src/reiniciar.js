@@ -26,7 +26,7 @@
  * disponible en la máquina donde ese registro ya tiene valor legal, por mucho
  * cuidado que se tenga. El cerrojo no se quita desde aquí.
  */
-import { existsSync, mkdirSync, writeFileSync, readFileSync } from 'node:fs'
+import { existsSync, mkdirSync, writeFileSync, readFileSync, readdirSync, renameSync } from 'node:fs'
 import { join } from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
@@ -153,6 +153,30 @@ if (migracion.status !== 0) {
 
 // --- Cerrojo de producción -------------------------------------------
 if (marcarProduccion) {
+  // Las copias y sellos de la fase de pruebas contienen datos de prueba y
+  // una cadena de hashes que ya no existe. Mezclados con los de producción
+  // confundirían a cualquiera que los revise dentro de tres años. No se
+  // borran —destruir copias en silencio nunca es buena idea—: se apartan a
+  // una carpeta con fecha que puede eliminarse a mano.
+  const archivo = join(dirname(DIRECTORIO_DATOS), `pruebas-archivadas-${new Date().toISOString().slice(0, 10)}`)
+  let apartados = 0
+  for (const [dir, patron] of [
+    [process.env.RUTA_COPIAS ?? '/datos/copias', /\.(dump\.enc|sql)$/],
+    [DIRECTORIO_DATOS, /^sellos-.*\.jsonl$/],
+  ]) {
+    if (!existsSync(dir)) continue
+    for (const f of readdirSync(dir)) {
+      if (!patron.test(f)) continue
+      mkdirSync(archivo, { recursive: true })
+      renameSync(join(dir, f), join(archivo, f))
+      apartados++
+    }
+  }
+  if (apartados > 0) {
+    console.log(`\n   ${apartados} copia(s) y sello(s) de pruebas apartados en:\n   ${archivo}`)
+    console.log('   Puede borrar esa carpeta cuando quiera: nada de producción depende de ella.')
+  }
+
   mkdirSync(DIRECTORIO_DATOS, { recursive: true })
   writeFileSync(
     MARCA_PRODUCCION,
