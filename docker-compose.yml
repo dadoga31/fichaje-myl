@@ -1,19 +1,37 @@
 # =====================================================================
 #  FICHAJE MyL — instalación en el PC de la empresa
 #
-#  Tres servicios y ninguna dependencia externa:
+#  Para PROBAR (sin dominio, con una dirección temporal):
+#      docker compose --profile pruebas up -d
 #
-#    postgres     el libro de fichajes. Los datos viven en un volumen del
-#                 propio equipo y no salen de él.
-#    aplicacion   servidor + PWA. Escucha SOLO en 127.0.0.1.
-#    tunel        publica la aplicación en internet mediante una conexión
-#                 de SALIDA hacia Cloudflare. El equipo no abre ningún
-#                 puerto entrante: ni hay que tocar el router ni hace falta
-#                 IP fija, y no queda nada del PC expuesto a la red.
+#  Para PRODUCCIÓN (con su dominio y su túnel de Cloudflare):
+#      docker compose --profile produccion up -d
 #
-#  Arranque:   docker compose up -d
-#  Registro:   docker compose logs -f aplicacion
+#  Comandos de administración (altas, reinicio, restaurar copias):
+#      docker compose run --rm admin node src/alta.js …
+#
+#  Servicios:
+#    postgres     el libro de fichajes. Vive en este equipo y no sale de él.
+#    preparar     deja la base lista al arrancar y termina. Sin pasos a mano.
+#    aplicacion   servidor + PWA, con un usuario SIN permiso para alterar
+#                 un fichaje. Escucha solo en 127.0.0.1.
+#    respaldos    copia cifrada y sello firmado cada noche, sin cron.
+#    tunel        publica la aplicación sin abrir ningún puerto en el PC.
 # =====================================================================
+
+# Conexión con privilegios de superusuario. La usan SOLO las tareas de
+# mantenimiento —preparar, copias, altas—, nunca la aplicación.
+x-superusuario: &superusuario
+  PGHOST: postgres
+  PGPORT: 5432
+  PGDATABASE: ${PGDATABASE:-fichaje}
+  PGUSER: postgres
+  PGPASSWORD: ${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD en .env}
+  TZ: ${TZ:-Europe/Madrid}
+  CLAVE_COPIAS: ${CLAVE_COPIAS:-}
+  RUTA_COPIAS: /datos/copias
+  RUTA_SELLOS: /datos/sellos
+  DIAS_RETENCION_COPIAS: ${DIAS_RETENCION_COPIAS:-30}
 
 services:
   postgres:
@@ -23,26 +41,38 @@ services:
       POSTGRES_DB: ${PGDATABASE:-fichaje}
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD en .env}
-      # El cómputo de la jornada depende del huso de la empresa.
       TZ: ${TZ:-Europe/Madrid}
-      # Fuerza la comparación de contraseñas con SCRAM, no con MD5.
       POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256"
     volumes:
+      # Volumen gestionado por Docker y no una carpeta del PC: en Windows,
+      # PostgreSQL se niega a arrancar sobre una carpeta compartida con el
+      # sistema por los permisos. Las copias, en cambio, sí van a ./datos.
       - datos_postgres:/var/lib/postgresql/data
-    # Sin `ports:` a propósito: la base de datos NO se publica, ni siquiera
-    # en localhost. Solo la alcanza la aplicación por la red interna.
+    # Sin `ports:`: la base de datos no se publica, ni siquiera en localhost.
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d ${PGDATABASE:-fichaje}"]
-      interval: 10s
+      interval: 5s
       timeout: 5s
-      retries: 10
+      retries: 30
+
+  preparar:
+    build: .
+    command: ["node", "src/preparar.js"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      <<: *superusuario
+      APP_USER: ${PGUSER:-fichaje_app}
+      APP_PASSWORD: ${PGPASSWORD:?defina PGPASSWORD en .env}
+    restart: "no"
 
   aplicacion:
     build: .
     restart: unless-stopped
     depends_on:
-      postgres:
-        condition: service_healthy
+      preparar:
+        condition: service_completed_successfully
     environment:
       NODE_ENV: production
       HOST: 0.0.0.0
@@ -53,24 +83,56 @@ services:
       PGDATABASE: ${PGDATABASE:-fichaje}
       PGUSER: ${PGUSER:-fichaje_app}
       PGPASSWORD: ${PGPASSWORD:?defina PGPASSWORD en .env}
-      CLAVE_COPIAS: ${CLAVE_COPIAS}
-      RUTA_COPIAS: /datos/copias
-      RUTA_SELLOS: /datos/sellos
-    volumes:
-      - datos_respaldo:/datos
-    # Solo en localhost del propio PC: quien publica es el túnel. Así, aunque
-    # alguien esté dentro de la red de la oficina, no llega por su cuenta.
+    # Solo en el propio PC, para probar desde su navegador en
+    # http://localhost:3000. Desde fuera se llega únicamente por el túnel.
     ports:
       - "127.0.0.1:3000:3000"
 
-  tunel:
-    image: cloudflare/cloudflared:latest
+  respaldos:
+    build: .
+    command: ["node", "src/programador.js"]
+    # Escribe en ./datos, cuyo dueño en el PC no se conoce de antemano.
+    user: root
     restart: unless-stopped
     depends_on:
-      - aplicacion
-    command: tunnel --no-autoupdate run --token ${TOKEN_TUNEL:?defina TOKEN_TUNEL en .env}
-    # Sin puertos: cloudflared abre la conexión hacia fuera, no la recibe.
+      preparar:
+        condition: service_completed_successfully
+    environment: *superusuario
+    volumes:
+      # Una carpeta normal del PC, visible en el explorador de archivos: así
+      # se pueden copiar a un disco externo sin saber nada de Docker.
+      - ./datos:/datos
+
+  # Comandos de administración. No arranca solo: se usa con `run --rm`.
+  admin:
+    build: .
+    profiles: ["admin"]
+    user: root
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment: *superusuario
+    volumes:
+      - ./datos:/datos
+
+  # Túnel temporal para PROBAR: sin cuenta ni dominio. Cloudflare asigna una
+  # dirección https://….trycloudflare.com que CAMBIA en cada reinicio. Vale
+  # para probar con los móviles; no vale para que la plantilla fiche a diario.
+  tunel-pruebas:
+    image: cloudflare/cloudflared:latest
+    profiles: ["pruebas"]
+    restart: unless-stopped
+    depends_on: [aplicacion]
+    command: tunnel --no-autoupdate --url http://aplicacion:3000
+
+  # Túnel definitivo, con su dominio. Abre una conexión de SALIDA: el PC no
+  # tiene ningún puerto abierto hacia internet.
+  tunel:
+    image: cloudflare/cloudflared:latest
+    profiles: ["produccion"]
+    restart: unless-stopped
+    depends_on: [aplicacion]
+    command: tunnel --no-autoupdate run --token ${TOKEN_TUNEL:-falta-TOKEN_TUNEL-en-.env}
 
 volumes:
   datos_postgres:
-  datos_respaldo:

@@ -25,9 +25,11 @@
  * PostgreSQL; lo que no puede es cambiar lo que ya salió firmado y fechado.
  */
 import { spawn } from 'node:child_process'
-import { createCipheriv, createPrivateKey, createPublicKey, generateKeyPairSync, randomBytes, sign as firmar, verify as verificarFirma } from 'node:crypto'
+import { createCipheriv, createDecipheriv, scryptSync, createPrivateKey, createPublicKey, generateKeyPairSync, randomBytes, sign as firmar, verify as verificarFirma } from 'node:crypto'
 import { createWriteStream, existsSync, mkdirSync, readFileSync, writeFileSync, appendFileSync, readdirSync, statSync, unlinkSync } from 'node:fs'
 import { join } from 'node:path'
+import { pipeline } from 'node:stream/promises'
+import { spawnSync } from 'node:child_process'
 import pg from 'pg'
 
 const DESTINO_COPIAS = process.env.RUTA_COPIAS ?? '/datos/copias'
@@ -38,7 +40,7 @@ const DIAS_RETENCION_COPIAS = Number(process.env.DIAS_RETENCION_COPIAS ?? 30)
 const args = process.argv.slice(2)
 
 function asegurarDirectorio(ruta) {
-  if (!existsSync(ruta)) mkdirSync(ruta, { recursive: true, mode: 0o700 })
+  if (!existsSync(ruta)) mkdirSync(ruta, { recursive: true, mode: 0o755 })
 }
 
 // ---------------------------------------------------------------------
@@ -91,14 +93,11 @@ async function hacerCopia() {
   // La clave de cifrado se deriva de la frase con scrypt y una sal nueva por
   // copia; la sal y el vector viajan en claro al principio del fichero, que
   // es lo correcto: lo secreto es la frase.
+  //
+  // Formato:  «FMYL1» (5) · sal (16) · vector (12) · cifrado · etiqueta GCM (16)
   const sal = randomBytes(16)
   const iv = randomBytes(12)
-  const { scryptSync } = await import('node:crypto')
-  const claveDerivada = scryptSync(clave, sal, 32)
-  const cifrador = createCipheriv('aes-256-gcm', claveDerivada, iv)
-
-  const salida = createWriteStream(destino, { mode: 0o600 })
-  salida.write(Buffer.concat([Buffer.from('FMYL1'), sal, iv]))
+  const cifrador = createCipheriv('aes-256-gcm', scryptSync(clave, sal, 32), iv)
 
   const volcado = spawn('pg_dump', ['--format=custom', '--no-owner', '--no-privileges'], {
     env: {
@@ -109,25 +108,42 @@ async function hacerCopia() {
       PGDATABASE: process.env.PGDATABASE ?? 'fichaje',
     },
   })
-
   let errorVolcado = ''
   volcado.stderr.on('data', (d) => (errorVolcado += d.toString()))
-  volcado.stdout.pipe(cifrador).pipe(salida, { end: false })
+  const finVolcado = new Promise((resolve) => volcado.on('close', resolve))
 
-  const codigo = await new Promise((resolve) => volcado.on('close', resolve))
+  // Todo en una sola tubería. La versión anterior esperaba el evento `end`
+  // del cifrador DESPUÉS de que ya hubiera ocurrido: la promesa no se
+  // resolvía nunca, Node salía con código 13 y el fichero quedaba sin la
+  // etiqueta GCM, es decir, imposible de descifrar. Cada copia era basura.
+  //
+  // El generador añade la etiqueta justo cuando el cifrador ha terminado,
+  // que es el único momento en que existe.
+  await pipeline(
+    volcado.stdout,
+    cifrador,
+    async function* (cifrado) {
+      yield Buffer.concat([CABECERA, sal, iv])
+      for await (const trozo of cifrado) yield trozo
+      yield cifrador.getAuthTag()
+    },
+    createWriteStream(destino, { mode: 0o644 }),
+  )
+
+  const codigo = await finVolcado
   if (codigo !== 0) {
+    unlinkSync(destino)
     console.error(`pg_dump ha fallado (código ${codigo}):\n${errorVolcado}`)
     process.exit(1)
   }
 
-  await new Promise((resolve) => cifrador.on('end', resolve))
-  // La etiqueta de autenticación va al final: sin ella no se puede descifrar,
-  // y además delata cualquier alteración del fichero.
-  salida.end(cifrador.getAuthTag())
-  await new Promise((resolve) => salida.on('close', resolve))
+  // Una copia que nunca se ha descifrado es una suposición. Se comprueba en
+  // el momento: si la etiqueta no cuadra, se sabe hoy y no el día en que
+  // haga falta restaurar.
+  descifrarCopia(destino, clave)
 
   const tam = statSync(destino).size
-  console.log(`▸ Copia creada: ${destino} (${(tam / 1024 / 1024).toFixed(1)} MB)`)
+  console.log(`▸ Copia creada y verificada: ${destino} (${(tam / 1024 / 1024).toFixed(1)} MB)`)
 
   // Retención: se conservan los últimos N días de copias. El registro legal
   // de 4 años lo garantiza la base de datos, no el histórico de volcados.
@@ -142,6 +158,88 @@ async function hacerCopia() {
     }
   }
   if (borradas > 0) console.log(`  ${borradas} copia(s) anterior(es) a ${DIAS_RETENCION_COPIAS} días eliminadas`)
+}
+
+const CABECERA = Buffer.from('FMYL1')
+
+/**
+ * Descifra una copia y devuelve el volcado de PostgreSQL en claro.
+ *
+ * Lanza si la frase no es la correcta o si el fichero ha sido alterado o
+ * está truncado: GCM no descifra «casi bien», o cuadra la etiqueta o falla.
+ */
+function descifrarCopia(ruta, clave) {
+  const todo = readFileSync(ruta)
+  if (todo.length < CABECERA.length + 16 + 12 + 16 || !todo.subarray(0, 5).equals(CABECERA)) {
+    throw new Error(`${ruta} no es una copia de Fichaje (cabecera desconocida).`)
+  }
+  const sal = todo.subarray(5, 21)
+  const iv = todo.subarray(21, 33)
+  const etiqueta = todo.subarray(todo.length - 16)
+  const cifrado = todo.subarray(33, todo.length - 16)
+
+  const descifrador = createDecipheriv('aes-256-gcm', scryptSync(clave, sal, 32), iv)
+  descifrador.setAuthTag(etiqueta)
+  try {
+    return Buffer.concat([descifrador.update(cifrado), descifrador.final()])
+  } catch {
+    throw new Error(
+      'No se puede descifrar: la frase CLAVE_COPIAS no es la correcta, o el fichero\n' +
+        'está dañado o ha sido modificado.',
+    )
+  }
+}
+
+/**
+ * Restaura una copia sobre una base de datos.
+ *
+ * Por defecto restaura en una base NUEVA y no toca la de producción: lo
+ * normal es querer mirar qué había, no sobrescribir lo que hay. Sustituir la
+ * base en uso es una decisión aparte y exige decirlo expresamente.
+ */
+function restaurarCopia(ruta, destino) {
+  const clave = process.env.CLAVE_COPIAS
+  if (!clave) {
+    console.error('Falta CLAVE_COPIAS: sin la frase con la que se cifró, no se puede restaurar.')
+    process.exit(1)
+  }
+
+  let volcado
+  try {
+    volcado = descifrarCopia(ruta, clave)
+  } catch (error) {
+    console.error(`\n  ✖ ${error.message}\n`)
+    process.exit(1)
+  }
+  console.log(`▸ Copia descifrada y verificada (${(volcado.length / 1024).toFixed(0)} KB)`)
+
+  const entorno = { ...process.env, PGDATABASE: 'postgres' }
+  const crear = spawnSync('psql', ['-v', 'ON_ERROR_STOP=1', '-c', `create database "${destino}"`], {
+    env: entorno,
+    encoding: 'utf8',
+  })
+  if (crear.status !== 0) {
+    console.error(`No se ha podido crear la base «${destino}»:\n${crear.stderr}`)
+    process.exit(1)
+  }
+
+  const restaurar = spawnSync('pg_restore', ['--no-owner', '--no-privileges', '-d', destino], {
+    input: volcado,
+    env: { ...process.env, PGDATABASE: destino },
+    encoding: 'buffer',
+  })
+  // pg_restore avisa de objetos preexistentes (extensiones, roles) que no son
+  // errores reales; lo que importa es que los datos estén y la cadena cuadre.
+  const consulta = spawnSync(
+    'psql',
+    ['-tAc', 'select count(*) from public.time_entries', '-d', destino],
+    { env: process.env, encoding: 'utf8' },
+  )
+  if (consulta.status !== 0) {
+    console.error(`La restauración ha fallado:\n${restaurar.stderr?.toString() ?? ''}`)
+    process.exit(1)
+  }
+  console.log(`▸ Restaurada en la base «${destino}»: ${consulta.stdout.trim()} fichaje(s).`)
 }
 
 // ---------------------------------------------------------------------
@@ -218,7 +316,7 @@ async function hacerSello() {
     // dos serializaciones distintas del mismo dato darían firmas distintas.
     const canonico = JSON.stringify(sello, Object.keys(sello).sort())
     const firma = firmar(null, Buffer.from(canonico), clave).toString('base64')
-    appendFileSync(fichero, `${JSON.stringify({ sello, firma })}\n`, { mode: 0o600 })
+    appendFileSync(fichero, `${JSON.stringify({ sello, firma })}\n`, { mode: 0o644 })
   }
 
   console.log(`▸ Sello diario añadido a ${fichero}`)
@@ -265,11 +363,17 @@ function verificarSellos(ruta) {
 if (args.includes('--copia')) await hacerCopia()
 else if (args.includes('--sello')) await hacerSello()
 else if (args.includes('--verificar')) verificarSellos(args[args.indexOf('--verificar') + 1])
+else if (args.includes('--restaurar')) {
+  const fichero = args[args.indexOf('--restaurar') + 1]
+  const destino = args[args.indexOf('--en') + 1] ?? `restaurada_${Date.now()}`
+  restaurarCopia(fichero, args.includes('--en') ? destino : `restaurada_${Date.now()}`)
+}
 else {
   console.log(
     'Uso:\n' +
       '  node src/respaldo.js --copia              Volcado completo cifrado (disco local)\n' +
       '  node src/respaldo.js --sello              Sello diario firmado (sacar fuera)\n' +
-      '  node src/respaldo.js --verificar <fich>   Comprueba las firmas de un fichero de sellos\n',
+      '  node src/respaldo.js --verificar <fich>   Comprueba las firmas de un fichero de sellos\n' +
+      '  node src/respaldo.js --restaurar <fich> [--en <base>]   Restaura en una base NUEVA\n',
   )
 }

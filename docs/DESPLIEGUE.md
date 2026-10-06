@@ -1,111 +1,103 @@
 # Instalación en el PC de la empresa
 
-Guía para dejar la aplicación funcionando en un ordenador de la oficina del
-cliente, accesible desde el móvil de cualquier persona de la plantilla y con
-los datos guardados en ese mismo equipo.
+Guía para dejar la aplicación funcionando en un ordenador de la oficina,
+accesible desde el móvil de cualquier persona de la plantilla y con los datos
+guardados en ese mismo equipo.
 
 ```
   Móvil / PC  ──HTTPS──▶  Cloudflare  ──túnel──▶   PC DE LA OFICINA
                                                    ├── aplicación (PWA + API)
-                                                   └── PostgreSQL  ← los datos
+                                                   ├── PostgreSQL  ← los fichajes
+                                                   └── ./datos     ← copias y sellos
 ```
 
 Por el túnel pasa **el tráfico**, no el almacenamiento: los fichajes se
 escriben y se quedan en el disco de ese PC.
 
+**Son cuatro comandos.** El esquema de la base de datos, el usuario de la
+aplicación y las copias nocturnas se preparan solos; no hay que tocar
+PostgreSQL ni configurar tareas programadas.
+
 ---
 
 ## Antes de empezar
 
-**El equipo.** Cualquier ordenador con Docker que pueda quedarse encendido:
-un mini-PC vale de sobra. Con 4 GB de RAM y 20 GB libres va holgado para una
-plantilla de cien personas y cuatro años de registro.
+**El equipo.** Cualquier ordenador que pueda quedarse encendido: un mini-PC
+vale de sobra. Con 4 GB de RAM y 20 GB libres va holgado para una plantilla
+de cien personas y cuatro años de registro.
 
-**Debe estar encendido siempre.** Si está apagado, nadie puede fichar. Merece
-la pena configurar en la BIOS el arranque automático tras un corte de luz, y
-conectarlo a un SAI si la oficina tiene cortes.
+**Debe estar encendido siempre, y no puede suspenderse.** Si el equipo duerme,
+nadie puede fichar. En Windows: *Configuración → Sistema → Inicio/apagado →
+Suspender: Nunca*. Merece la pena activar en la BIOS el arranque automático
+tras un corte de luz, y conectarlo a un SAI si la oficina tiene cortes.
 
-**Tres cosas que instalar**: Docker, una cuenta gratuita de Cloudflare y un
-dominio (vale un subdominio de uno que ya tenga el cliente).
+**Instale Docker.** En Windows y Mac, [Docker Desktop](https://www.docker.com/products/docker-desktop/),
+y en sus ajustes active **«Start Docker Desktop when you sign in»**: sin eso,
+tras un reinicio del PC la aplicación no vuelve sola. En Linux, Docker Engine.
+
+**Para producción, además**: una cuenta gratuita de Cloudflare y un dominio
+(vale un subdominio de uno que ya tenga el cliente). **Para probar no hace
+falta ninguna de las dos cosas.**
 
 ---
 
-## 1. Traer el proyecto y configurarlo
+## 1. Traer el proyecto
 
 ```bash
 git clone https://github.com/dadoga31/fichaje-myl.git
 cd fichaje-myl
-cp .env.example .env
 ```
 
-Edite `.env` y rellene:
+Sin `git`: en GitHub, *Code → Download ZIP*, descomprímalo y abra una terminal
+(en Windows, PowerShell) dentro de la carpeta.
 
-| Variable | Qué poner |
-|---|---|
-| `POSTGRES_PASSWORD` | Contraseña del superusuario de la base de datos. Genérela larga y guárdela |
-| `PGPASSWORD` | Contraseña del usuario con el que la aplicación atiende a la plantilla |
-| `CLAVE_COPIAS` | Frase para cifrar las copias. **Mínimo 16 caracteres** |
-| `TOKEN_TUNEL` | Testigo del túnel; se obtiene en el paso 3 |
-
-> **`CLAVE_COPIAS` en un gestor de contraseñas, hoy.** Sin ella las copias de
-> seguridad no se pueden restaurar, y entonces no son copias de nada.
-
----
-
-## 2. Arrancar
+## 2. Generar la configuración
 
 ```bash
-docker compose up -d
-docker compose logs -f aplicacion    # Ctrl-C para salir del registro
+docker run --rm -v "${PWD}:/w" -w /w node:22-alpine node servidor/src/configurar.js
 ```
 
-Cree el usuario de base de datos de la aplicación y aplique el esquema:
+El mismo comando funciona en PowerShell, en Mac y en Linux. Crea el fichero
+`.env` con contraseñas aleatorias y le muestra una frase, **`CLAVE_COPIAS`**:
+
+> **Apúntela ahora en un gestor de contraseñas.** Es la llave de las copias
+> de seguridad. Si el PC se pierde y la frase solo estaba en él, las copias no
+> se pueden abrir y no sirven de nada.
+
+Si ya existe un `.env`, el configurador se niega a sobrescribirlo, y es a
+propósito: sus contraseñas quedan grabadas en la base de datos la primera vez
+que arranca, y cambiarlas después dejaría a la aplicación sin acceso a su
+propio registro.
+
+## 3. Arrancar en modo pruebas
 
 ```bash
-docker compose exec postgres psql -U postgres -d fichaje \
-  -c "create role fichaje_app login password 'LA_QUE_PUSO_EN_PGPASSWORD'"
-
-docker compose exec aplicacion node src/migrar.js
-
-docker compose exec postgres psql -U postgres -d fichaje \
-  -c "grant authenticated, service_role to fichaje_app"
+docker compose --profile pruebas up -d --build
 ```
 
-El orden importa: `migrar.js` es quien crea los roles `authenticated` y
-`service_role`, así que el `grant` va después.
-
----
-
-## 3. Publicarlo en internet
-
-En el panel de **Cloudflare Zero Trust** → *Networks* → *Tunnels* →
-*Create a tunnel* → *Cloudflared*:
-
-1. Póngale nombre (`fichaje-oficina`, por ejemplo).
-2. Copie el **token** y péguelo en `TOKEN_TUNEL` del fichero `.env`.
-3. En *Public hostnames*, añada su dominio —`fichaje.suempresa.es`— apuntando
-   al servicio `http://aplicacion:3000`.
+La primera vez tarda unos minutos (compila la aplicación). Después:
 
 ```bash
-docker compose up -d tunel
+docker compose logs tunel-pruebas | grep trycloudflare
 ```
 
-Cloudflare emite el certificado HTTPS solo. A partir de aquí la aplicación es
-accesible desde cualquier móvil, dentro y fuera de la oficina.
+Verá una dirección como `https://palabras-al-azar.trycloudflare.com`. **Ábrala
+en cualquier móvil**, dentro o fuera de la oficina: es la aplicación.
 
-**El equipo no tiene ningún puerto abierto hacia internet.** `cloudflared`
-abre una conexión de salida; nadie puede iniciar una conexión hacia el PC.
-Eso es lo que hace que instalar esto en una oficina no sea temerario.
+> Esa dirección es **temporal**: cambia cada vez que se reinicia el túnel y
+> Cloudflare no garantiza su disponibilidad. Sirve para probar con los
+> móviles, no para que la plantilla fiche a diario. Para eso está el paso 6.
 
----
+Desde el propio PC también puede abrir `http://localhost:3000`.
 
 ## 4. Dar de alta la empresa y a las personas
 
 ```bash
-docker compose exec aplicacion node src/alta.js --empresa "Mi Empresa SL" --cif B12345678
+docker compose run --rm admin node src/alta.js --empresa "Mi Empresa SL" --cif B12345678
 ```
 
-Anote el `company_id` que imprime. Prepare un CSV:
+Prepare un CSV y guárdelo **en la carpeta `datos`** del proyecto como
+`datos/plantilla.csv`:
 
 ```csv
 email,nombre,rol,numero_empleado,nif,horas_semana
@@ -114,70 +106,158 @@ luis.marin@miempresa.es,Luis Marín Soto,admin,A-001,87654321X,40
 ```
 
 ```bash
-docker compose cp plantilla.csv aplicacion:/tmp/plantilla.csv
-docker compose exec -e FICHAJE_COMPANY_ID=<el-id> aplicacion node src/alta.js /tmp/plantilla.csv --dry-run
-docker compose exec -e FICHAJE_COMPANY_ID=<el-id> aplicacion node src/alta.js /tmp/plantilla.csv
+docker compose run --rm admin node src/alta.js /datos/plantilla.csv --dry-run
+docker compose run --rm admin node src/alta.js /datos/plantilla.csv
 ```
 
-Imprime las contraseñas iniciales **una sola vez**. Repártalas por un canal
-seguro; cada persona la cambia desde *Ajustes → Su contraseña*.
+Imprime las contraseñas iniciales **una sola vez**. Cada persona la cambia en
+*Ajustes → Su contraseña*.
 
-Roles: `employee`, `manager`, `admin`, `inspector`.
+**Borre `datos/plantilla.csv` en cuanto termine el alta.** Contiene nombres,
+correos y NIF de toda la plantilla, y esa carpeta es la que se lleva fuera de
+la oficina con las copias.
+
+Roles: `employee`, `manager`, `admin`, `inspector`. Con una sola empresa dada
+de alta, el script la detecta solo.
 
 ---
 
-## 5. Copias de seguridad — no es opcional
+## 5. Fase de pruebas
 
-El registro debe conservarse cuatro años. Si ese PC se estropea sin copias,
-desaparece la prueba entera. Programe las dos tareas con `cron`:
+Pruebe todo lo que quiera: fichar desde varios móviles a la vez, el panel en
+vivo, las pausas, las jornadas que cruzan medianoche, fichar sin cobertura,
+pedir y aprobar correcciones, los informes, la vista de Inspección.
 
-```cron
-# Copia completa cifrada, al disco del propio equipo, cada noche
-30 2 * * *  cd /ruta/fichaje-myl && docker compose exec -T aplicacion node src/respaldo.js --copia
+Lo que **no** podrá es editar ni borrar un fichaje desde la aplicación. No
+está escondido: la operación no existe, y el usuario de base de datos de la
+aplicación recibe *permission denied* si lo intenta. Compruébelo —es justo lo
+que compra el cliente— y use el circuito de rectificación, que es la vía
+legal: la persona solicita el cambio, administración lo aprueba, y quedan el
+asiento original y el nuevo, con su motivo y su autor.
 
-# Sello diario firmado, para SACAR de la oficina
-45 2 * * *  cd /ruta/fichaje-myl && docker compose exec -T aplicacion node src/respaldo.js --sello
-```
-
-### Por qué son dos cosas distintas
-
-**La copia sirve para restaurar.** Es el volcado completo, cifrado, en el
-disco del PC. Protege contra el borrado accidental y el fallo del disco. No
-protege contra un incendio ni contra un ransomware que alcance la carpeta.
-
-**El sello sirve para probar.** Es un resumen diminuto —cuántos asientos hay
-y cuál es la cabeza de la cadena de hashes— firmado y fechado. No permite
-restaurar nada: permite demostrar, meses después, qué decía el libro en una
-fecha concreta.
-
-Ahí está la clave de instalar esto en la oficina del cliente. En ese equipo,
-quien tenga administrador **puede** abrir PostgreSQL y editar una fila. Lo
-que no puede es cambiar lo que ya salió firmado y fechado de la oficina. Si
-alguien altera el registro, la cabeza de la cadena dejará de coincidir con la
-que quedó sellada fuera ese día, y quedará a la vista.
-
-**Saque el fichero de sellos de la oficina todos los días** —correo, disco
-externo, almacenamiento en la nube—. Su valor está en existir en otro sitio.
-
-Copie también la **clave pública** (`/datos/sellos/clave-publica.pem`) y
-guárdela aparte: es lo que permite a una asesoría o a un perito comprobar los
-sellos sin depender del equipo que los produjo.
+### Volver a empezar
 
 ```bash
-# Comprobar las firmas de un fichero de sellos
-docker compose exec aplicacion node src/respaldo.js --verificar /datos/sellos/sellos-2026.jsonl
+docker compose run --rm admin node src/reiniciar.js --confirmo
 ```
+
+Tantas veces como quiera. Deja la base recién instalada —sin empresas, sin
+personas, sin fichajes, contadores a uno— y antes de borrar guarda una copia
+de rescate. Después repita el paso 4.
+
+### Por qué no se borran fichajes sueltos
+
+Cada asiento guarda el hash del anterior. Si se borraran los de prueba y se
+siguiera con la misma base, el primer asiento superviviente apuntaría a un
+hash que ya no existe: la cadena quedaría rota **para siempre** y la
+aplicación informaría de manipulación durante los cuatro años siguientes.
+Ante una inspección, un registro que se autodenuncia como alterado es peor que
+no tener registro. Por eso solo existe el reinicio completo.
+
+---
+
+## 6. Paso a producción
+
+### a) El túnel definitivo
+
+En **Cloudflare Zero Trust** → *Networks* → *Tunnels* → *Create a tunnel* →
+*Cloudflared*:
+
+1. Póngale nombre (`fichaje-oficina`).
+2. Copie el **token** y péguelo en `TOKEN_TUNEL=` dentro del fichero `.env`.
+3. En *Public hostnames*, añada su dominio —`fichaje.suempresa.es`— apuntando
+   al servicio **`http://aplicacion:3000`**.
+
+### b) Vaciar las pruebas y cerrar el cerrojo
+
+```bash
+docker compose --profile pruebas down
+docker compose run --rm admin node src/reiniciar.js --confirmo --produccion
+docker compose --profile produccion up -d
+```
+
+`--produccion` vacía la base y **cierra un cerrojo permanente**: desde ese
+momento el script de reinicio se niega a ejecutarse en este equipo. Es
+deliberado. Una herramienta capaz de vaciar el registro no puede seguir
+disponible donde ese registro ya tiene valor legal. **Usted tampoco podrá
+deshacerlo.**
+
+### c) Altas reales
+
+Repita el paso 4 con la empresa y la plantilla reales, y reparta las
+contraseñas.
+
+### d) Ese mismo día
+
+- Saque `datos/sellos/clave-publica.pem` de la oficina y guárdela aparte.
+- Saque el primer sello (`datos/sellos/sellos-AAAA.jsonl`) fuera de la oficina.
+
+---
+
+## Copias de seguridad
+
+**Se hacen solas.** El servicio `respaldos` las lanza cada noche, y también al
+arrancar si el equipo estuvo apagado y no hay copia de las últimas 24 horas.
+No hay que configurar ninguna tarea programada.
+
+Todo queda en la carpeta **`datos`** del proyecto, visible en el explorador de
+archivos:
+
+| Carpeta | Qué hay | Para qué |
+|---|---|---|
+| `datos/copias/` | Volcado completo y cifrado, cada noche (últimos 30 días) | **Restaurar** |
+| `datos/sellos/` | Resumen diario firmado | **Probar** que el registro no se ha tocado |
+
+**La copia sirve para restaurar.** Protege contra un borrado accidental o un
+disco que muere. Cada copia se descifra de prueba nada más hacerse: si algo
+fuera mal, se sabe esa noche y no el día que haga falta.
+
+**El sello sirve para probar.** Es un resumen diminuto —cuántos asientos hay y
+cuál es la cabeza de la cadena de hashes— firmado y fechado. En este equipo,
+quien tenga administrador puede abrir PostgreSQL y editar una fila; lo que no
+puede es cambiar lo que ya salió firmado y fechado de la oficina. Si alguien
+altera el registro, la cabeza de la cadena dejará de coincidir con la que
+quedó sellada fuera.
+
+### Lo único que tiene que hacer usted
+
+**Sacar la carpeta `datos` de la oficina con regularidad** —un disco USB que
+se lleva a casa, una carpeta sincronizada con la nube, el correo—. Las copias
+van cifradas, así que pueden viajar por cualquier sitio. Todo lo que solo
+existe dentro de este PC desaparece con él: un robo, un incendio o un
+ransomware se llevarían a la vez el registro y sus copias.
+
+### Comprobar que se están haciendo
+
+```bash
+docker compose logs --tail 30 respaldos
+```
+
+Si una copia falla, ahí aparece en mayúsculas. Merece la pena mirarlo una vez
+por semana.
 
 ### Restaurar una copia
 
+Por defecto se restaura en una base **nueva**, sin tocar la que está en uso:
+lo normal es querer ver qué había, no sobrescribir lo que hay.
+
 ```bash
-# Descifrar (pide la CLAVE_COPIAS)
-openssl enc -d -aes-256-gcm -in fichaje-XXXX.dump.enc -out fichaje.dump ...
-docker compose exec -T postgres pg_restore -U postgres -d fichaje --clean < fichaje.dump
+docker compose run --rm admin node src/respaldo.js \
+  --restaurar /datos/copias/fichaje-AAAA-MM-DDTHH-MM-SS.dump.enc --en comprobacion
 ```
 
-> Pruebe una restauración **antes** de necesitarla. Una copia que nunca se ha
-> restaurado es una suposición, no una copia de seguridad.
+Pide la `CLAVE_COPIAS` del `.env` (si el PC original se perdió, ponga en el
+`.env` nuevo la que guardó en el gestor de contraseñas). Comprueba la etiqueta
+de autenticación, crea la base `comprobacion` y le carga los datos.
+
+> **Haga una restauración de prueba durante la fase de pruebas.** Una copia
+> que nunca se ha restaurado es una suposición, no una copia de seguridad.
+
+### Comprobar los sellos
+
+```bash
+docker compose run --rm admin node src/respaldo.js --verificar /datos/sellos/sellos-2026.jsonl
+```
 
 ---
 
@@ -192,97 +272,36 @@ docker compose exec -T postgres pg_restore -U postgres -d fichaje --clean < fich
 | Cuatro ojos en las aprobaciones | Función `review_correction()` |
 | Conservación ≥ 4 años | Restricción `CHECK` |
 
-La aplicación atiende a la plantilla con un rol de base de datos que **no
-tiene permiso** para modificar ni borrar un fichaje. Un fallo en el código
-del servidor no basta para alterar el registro: quien lo impide es el motor
-de base de datos.
-
-```bash
-# Comprobar el esquema completo sobre una base de datos desechable
-docker compose exec postgres psql -U postgres -c "create database prueba"
-# … aplicar migraciones y ejecutar sql/pruebas_cumplimiento.sql
-```
-
-40 aserciones que intentan **activamente** romper cada garantía.
-
----
-
-## Fase de pruebas y paso a producción
-
-Antes de que la empresa empiece a usarlo de verdad hay que probarlo a fondo:
-fichar desde varios móviles, forzar errores, pedir correcciones, aprobarlas,
-generar informes. Esas pruebas ensucian el registro, y ese registro **no se
-puede limpiar borrando fichajes**.
-
-### Por qué no se borran fichajes
-
-Cada asiento guarda el hash del anterior. Si se borran los de prueba y se
-sigue con la misma base de datos, el primer asiento superviviente apunta a un
-hash que ya no existe: la cadena queda rota **para siempre** y
-`verify_ledger()` informará de manipulación durante los cuatro años
-siguientes. Ante una inspección, un registro que se autodenuncia como alterado
-es peor que no tener registro.
-
-Por eso la aplicación no tiene —ni tendrá— ninguna función de «borrar
-fichaje». La forma correcta de limpiar es tirar la base de datos entera y
-volver a crearla.
-
-### Durante las pruebas
-
-Reinicie a cero tantas veces como quiera:
-
-```bash
-docker compose exec aplicacion node src/reiniciar.js --confirmo
-```
-
-Deja la base de datos recién instalada: sin empresas, sin personas, sin
-fichajes y con los contadores otra vez en uno. Antes de borrar guarda una
-copia de rescate por si acaso. Después vuelva a dar de alta la empresa y a su
-plantilla de pruebas y siga probando.
-
-**Qué puede probar y qué no.** Fichar desde varios móviles a la vez, el panel
-en vivo, las pausas, las jornadas que cruzan medianoche, el fichaje sin
-cobertura, los informes, la vista de Inspección. Lo que **no** podrá es
-editar ni borrar un fichaje desde la aplicación: no es que esté escondido, es
-que no existe esa operación. Pruebe que se lo impide —es justo lo que compra
-el cliente— y use el circuito de rectificación, que es la vía legal: la
-persona solicita el cambio, administración lo aprueba, y queda el asiento
-original más el nuevo con su motivo y su autor.
-
-### El día del arranque real
-
-```bash
-docker compose exec aplicacion node src/reiniciar.js --confirmo --produccion
-```
-
-Hace lo mismo y además **cierra un cerrojo permanente**: a partir de ese
-momento `reiniciar.js` se niega a ejecutarse en ese equipo. Es deliberado —una
-herramienta capaz de vaciar el registro no puede seguir disponible donde ese
-registro ya tiene valor legal.
-
-Después, y en este orden:
-
-1. `node src/alta.js --empresa "…" --cif …` con los datos reales
-2. `node src/alta.js plantilla.csv` con la plantilla real
-3. Compruebe que las tareas de copia y sello están en `cron`
-4. **Saque el primer sello fuera de la oficina ese mismo día**
-5. Reparta las contraseñas iniciales
-
-A partir de ahí el registro es inalterable de verdad, y usted mismo deja de
-poder deshacerlo.
+La aplicación atiende a la plantilla con un usuario de base de datos que **no
+tiene permiso** para modificar ni borrar un fichaje. Las tareas que necesitan
+más privilegios —preparar el esquema, copias, altas— corren en servicios
+aparte y nunca dentro de la aplicación.
 
 ---
 
 ## Mantenimiento
 
 ```bash
-docker compose logs -f aplicacion     # ver qué pasa
-docker compose restart aplicacion     # reiniciar
-docker compose pull && docker compose up -d --build   # actualizar
-docker compose exec aplicacion node src/migrar.js     # tras actualizar
+docker compose ps                              # qué está en marcha
+docker compose logs -f aplicacion              # qué está pasando
+docker compose --profile produccion restart    # reiniciar todo
+
+# Actualizar a una versión nueva (el esquema se migra solo al arrancar)
+git pull
+docker compose --profile produccion up -d --build
 ```
 
-**Comprobación mensual recomendada.** Entre con un perfil de administración
-en *Inspección* y confirme que la integridad del libro sale sin anomalías. Es
-un vistazo de diez segundos que detecta una manipulación antes de que pasen
-meses.
+**Comprobación mensual.** Entre con un perfil de administración en
+*Inspección* y confirme que la integridad del libro sale sin anomalías. Diez
+segundos que detectan una manipulación antes de que pasen meses.
+
+### Dónde viven los datos
+
+- **Los fichajes**: en el volumen de Docker `fichaje-myl_datos_postgres`.
+  En Windows y Mac está dentro del disco virtual de Docker Desktop.
+  **No use nunca «Reset to factory defaults» ni «Clean / Purge data» en Docker
+  Desktop, ni `docker compose down -v`**: borran ese volumen, y con él el
+  registro. Para eso existen las copias de `datos/copias`.
+- **Copias y sellos**: en la carpeta `datos` del proyecto.
+- **Las contraseñas**: en `.env`. Sin él, una copia restaurada no arranca.
+  Guárdelo también fuera del equipo, en un sitio seguro.

@@ -52,11 +52,14 @@ abrir ningún puerto** en el equipo.
 Instalación completa en **[`docs/DESPLIEGUE.md`](docs/DESPLIEGUE.md)**.
 
 ```bash
-cp .env.example .env     # rellene contraseñas y token del túnel
-docker compose up -d
-docker compose exec aplicacion node src/migrar.js
-docker compose exec aplicacion node src/alta.js --empresa "Mi Empresa SL" --cif B12345678
+docker run --rm -v "${PWD}:/w" -w /w node:22-alpine node servidor/src/configurar.js
+docker compose --profile pruebas up -d --build
+docker compose logs tunel-pruebas | grep trycloudflare      # la dirección para los móviles
+docker compose run --rm admin node src/alta.js --empresa "Mi Empresa SL" --cif B12345678
 ```
+
+El esquema, el usuario de la aplicación y las copias nocturnas se preparan
+solos al arrancar.
 
 ### Desarrollo
 
@@ -88,9 +91,12 @@ por fuera de la aplicación y comprobar que la cadena de hashes lo detecta**.
 No son opcionales: el registro debe conservarse cuatro años y vive en un solo
 equipo.
 
+Se hacen solas cada noche (servicio `respaldos`) y quedan en la carpeta
+`datos/`, lista para llevarse fuera de la oficina:
+
 ```bash
-node src/respaldo.js --copia   # volcado cifrado, al disco local
-node src/respaldo.js --sello   # resumen firmado y fechado, para sacar fuera
+docker compose logs respaldos                                   # ¿se están haciendo?
+docker compose run --rm admin node src/respaldo.js --restaurar /datos/copias/… --en comprobacion
 ```
 
 La copia sirve para **restaurar**; el sello sirve para **probar**. El sello es
