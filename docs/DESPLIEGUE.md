@@ -207,6 +207,72 @@ docker compose exec postgres psql -U postgres -c "create database prueba"
 
 ---
 
+## Fase de pruebas y paso a producción
+
+Antes de que la empresa empiece a usarlo de verdad hay que probarlo a fondo:
+fichar desde varios móviles, forzar errores, pedir correcciones, aprobarlas,
+generar informes. Esas pruebas ensucian el registro, y ese registro **no se
+puede limpiar borrando fichajes**.
+
+### Por qué no se borran fichajes
+
+Cada asiento guarda el hash del anterior. Si se borran los de prueba y se
+sigue con la misma base de datos, el primer asiento superviviente apunta a un
+hash que ya no existe: la cadena queda rota **para siempre** y
+`verify_ledger()` informará de manipulación durante los cuatro años
+siguientes. Ante una inspección, un registro que se autodenuncia como alterado
+es peor que no tener registro.
+
+Por eso la aplicación no tiene —ni tendrá— ninguna función de «borrar
+fichaje». La forma correcta de limpiar es tirar la base de datos entera y
+volver a crearla.
+
+### Durante las pruebas
+
+Reinicie a cero tantas veces como quiera:
+
+```bash
+docker compose exec aplicacion node src/reiniciar.js --confirmo
+```
+
+Deja la base de datos recién instalada: sin empresas, sin personas, sin
+fichajes y con los contadores otra vez en uno. Antes de borrar guarda una
+copia de rescate por si acaso. Después vuelva a dar de alta la empresa y a su
+plantilla de pruebas y siga probando.
+
+**Qué puede probar y qué no.** Fichar desde varios móviles a la vez, el panel
+en vivo, las pausas, las jornadas que cruzan medianoche, el fichaje sin
+cobertura, los informes, la vista de Inspección. Lo que **no** podrá es
+editar ni borrar un fichaje desde la aplicación: no es que esté escondido, es
+que no existe esa operación. Pruebe que se lo impide —es justo lo que compra
+el cliente— y use el circuito de rectificación, que es la vía legal: la
+persona solicita el cambio, administración lo aprueba, y queda el asiento
+original más el nuevo con su motivo y su autor.
+
+### El día del arranque real
+
+```bash
+docker compose exec aplicacion node src/reiniciar.js --confirmo --produccion
+```
+
+Hace lo mismo y además **cierra un cerrojo permanente**: a partir de ese
+momento `reiniciar.js` se niega a ejecutarse en ese equipo. Es deliberado —una
+herramienta capaz de vaciar el registro no puede seguir disponible donde ese
+registro ya tiene valor legal.
+
+Después, y en este orden:
+
+1. `node src/alta.js --empresa "…" --cif …` con los datos reales
+2. `node src/alta.js plantilla.csv` con la plantilla real
+3. Compruebe que las tareas de copia y sello están en `cron`
+4. **Saque el primer sello fuera de la oficina ese mismo día**
+5. Reparta las contraseñas iniciales
+
+A partir de ahí el registro es inalterable de verdad, y usted mismo deja de
+poder deshacerlo.
+
+---
+
 ## Mantenimiento
 
 ```bash
